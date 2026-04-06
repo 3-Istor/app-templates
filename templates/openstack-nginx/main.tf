@@ -1,6 +1,6 @@
 module "software" {
   source   = "../../modules/software/web-nginx"
-  app_name = var.app_name # Cascade depuis le template
+  app_name = var.app_name
 }
 
 module "infrastructure" {
