@@ -1,0 +1,14 @@
+{
+    "enabled": true,
+  "id": "openstack-web-git",
+  "name": "Git Website (OpenStack)",
+  "description": "Deploy a static website from a Git repository using Nginx on OpenStack.",
+  "icon": "🌐",
+  "image_path": "icon.png",
+  "category": "Web",
+  "variables": [
+    { "name": "git_repo_url", "label": "Git Repository URL", "type": "text", "required": true },
+    { "name": "git_branch", "label": "Git Branch", "type": "text", "default": "main" },
+    { "name": "instance_count", "label": "Number of Nodes", "type": "number", "default": 2 }
+  ]
+}
