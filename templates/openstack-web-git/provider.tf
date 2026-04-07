@@ -23,6 +23,6 @@ provider "openstack" {
     "network"       = "http://localhost:9696/v2.0/"
     "compute"       = "http://localhost:8774/v2.1/"
     "image"         = "http://localhost:9292/v2/"
-    "load-balancer" = "http://localhost:9876/"
+    "load-balancer" = "http://localhost:9876/v2/"
   }
 }
