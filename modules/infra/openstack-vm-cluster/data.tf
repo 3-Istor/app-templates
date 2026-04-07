@@ -17,3 +17,7 @@ data "openstack_compute_keypair_v2" "kp_admin" {
 data "openstack_networking_secgroup_v2" "sg_base" {
   name = "sg-base"
 }
+
+data "openstack_networking_secgroup_v2" "web_sg" {
+  name = "sg-web"
+}

@@ -1,24 +1,3 @@
-
-# TODO Move to the main 3-Istor-cloud project
-############################## Security Groups Web ############################
-
-resource "openstack_networking_secgroup_v2" "web_sg" {
-  name        = "sg-web"
-  description = "Web security group for HTTP traffic"
-}
-
-resource "openstack_networking_secgroup_rule_v2" "rule_http" {
-  direction         = "ingress"
-  ethertype         = "IPv4"
-  protocol          = "tcp"
-  port_range_min    = 80
-  port_range_max    = 80
-  remote_ip_prefix  = "0.0.0.0/0"
-  security_group_id = openstack_networking_secgroup_v2.web_sg.id
-}
-
-###############################################################################
-
 #################################### VMs ######################################
 
 resource "openstack_compute_servergroup_v2" "app_anti_affinity" {
@@ -36,7 +15,7 @@ resource "openstack_compute_instance_v2" "app_nodes" {
 
   security_groups = [
     data.openstack_networking_secgroup_v2.sg_base.name,
-    openstack_networking_secgroup_v2.web_sg.name
+    data.openstack_networking_secgroup_v2.web_sg.name
   ]
 
   network {
