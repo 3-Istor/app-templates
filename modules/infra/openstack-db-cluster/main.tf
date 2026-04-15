@@ -13,7 +13,7 @@ resource "openstack_networking_port_v2" "db_primary_port" {
 
   security_group_ids = [
     data.openstack_networking_secgroup_v2.sg_base.id,
-    data.openstack_networking_secgroup_v2.db_sg.id,
+    data.openstack_networking_secgroup_v2.web_sg.id,
   ]
 
   fixed_ip {
@@ -27,7 +27,7 @@ resource "openstack_networking_port_v2" "db_replica_port" {
 
   security_group_ids = [
     data.openstack_networking_secgroup_v2.sg_base.id,
-    data.openstack_networking_secgroup_v2.db_sg.id,
+    data.openstack_networking_secgroup_v2.web_sg.id,
   ]
 
   fixed_ip {
