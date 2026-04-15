@@ -1,0 +1,12 @@
+{
+  "enabled": true,
+  "id": "aws-nginx",
+  "name": "Nginx Website (AWS)",
+  "description": "Deploy a static Nginx website on AWS using an Auto Scaling Group.",
+  "icon": "☁️",
+  "image_path": "icon.png",
+  "category": "Web",
+  "variables": [
+    { "name": "instance_count", "label": "Number of Nodes", "type": "number", "default": 2 }
+  ]
+}
