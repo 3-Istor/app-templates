@@ -1,0 +1,29 @@
+{
+    "enabled": true,
+    "id": "openstack-db",
+    "name": "PostgreSQL HA (OpenStack)",
+    "description": "Deploy a highly-available PostgreSQL cluster with Patroni (Primary + Replica) on OpenStack.",
+    "icon": "🐘",
+    "image_path": "icon.png",
+    "category": "Database",
+    "variables": [
+        {
+            "name": "db_name",
+            "label": "Database Name",
+            "type": "string",
+            "default": "appdb"
+        },
+        {
+            "name": "db_user",
+            "label": "Database User",
+            "type": "string",
+            "default": "appuser"
+        },
+        {
+            "name": "db_password",
+            "label": "Database Password",
+            "type": "password",
+            "default": ""
+        }
+    ]
+}
