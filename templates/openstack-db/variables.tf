@@ -33,3 +33,8 @@ variable "db_password" {
   type      = string
   sensitive = true
 }
+
+variable "instance_count" {
+  type    = number
+  default = 2
+}
