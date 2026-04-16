@@ -51,7 +51,6 @@ terraform plan \
   -var="project_name=3-istor-cloud" \
   -var="instance_count=2" \
   -var="flavor_name=m1.small" \
-  -var="image_name=ubuntu-22.04" \
   -var="db_name=myappdb" \
   -var="db_user=myappuser" \
   -var="db_password=SuperSecretP@ss123"
@@ -67,7 +66,6 @@ terraform apply \
   -var="project_name=3-istor-cloud" \
   -var="instance_count=2" \
   -var="flavor_name=m1.small" \
-  -var="image_name=ubuntu-22.04" \
   -var="db_name=myappdb" \
   -var="db_user=myappuser" \
   -var="db_password=SuperSecretP@ss123" \
@@ -198,7 +196,6 @@ terraform destroy \
   -var="project_name=3-istor-cloud" \
   -var="instance_count=2" \
   -var="flavor_name=m1.small" \
-  -var="image_name=ubuntu-22.04" \
   -var="db_name=myappdb" \
   -var="db_user=myappuser" \
   -var="db_password=SuperSecretP@ss123" \

@@ -1,6 +1,6 @@
 # --- Outputs ---
 output "db_connection_string" {
-  value     = "postgresql://${var.db_user}:${local.db_password}@${module.infrastructure.db_public_ip}:5432/${var.db_name}"
+  value     = "postgresql://${var.db_user}:${local.db_password}@${module.infrastructure.db_public_ip}:5000/${var.db_name}"
   sensitive = true
 }
 

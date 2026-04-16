@@ -5,15 +5,13 @@ resource "openstack_compute_servergroup_v2" "db_anti_affinity" {
   policies = ["anti-affinity"]
 }
 
-# --- Ports créés AVANT les VMs pour connaître les IPs ---
-
 resource "openstack_networking_port_v2" "db_primary_port" {
   name       = "${var.app_name}-db-primary-port"
   network_id = data.openstack_networking_network_v2.internal_net.id
 
   security_group_ids = [
     data.openstack_networking_secgroup_v2.sg_base.id,
-    data.openstack_networking_secgroup_v2.web_sg.id,
+    data.openstack_networking_secgroup_v2.db_sg.id,
   ]
 
   fixed_ip {
@@ -27,7 +25,7 @@ resource "openstack_networking_port_v2" "db_replica_port" {
 
   security_group_ids = [
     data.openstack_networking_secgroup_v2.sg_base.id,
-    data.openstack_networking_secgroup_v2.web_sg.id,
+    data.openstack_networking_secgroup_v2.db_sg.id,
   ]
 
   fixed_ip {
@@ -48,9 +46,9 @@ resource "openstack_compute_instance_v2" "db_primary" {
     port = openstack_networking_port_v2.db_primary_port.id
   }
 
-  scheduler_hints {
-    group = openstack_compute_servergroup_v2.db_anti_affinity.id
-  }
+  # scheduler_hints {
+  #   group = openstack_compute_servergroup_v2.db_anti_affinity.id
+  # }
 }
 
 resource "openstack_compute_instance_v2" "db_replica" {
@@ -64,9 +62,9 @@ resource "openstack_compute_instance_v2" "db_replica" {
     port = openstack_networking_port_v2.db_replica_port.id
   }
 
-  scheduler_hints {
-    group = openstack_compute_servergroup_v2.db_anti_affinity.id
-  }
+  # scheduler_hints {
+  #   group = openstack_compute_servergroup_v2.db_anti_affinity.id
+  # }
 }
 
 ###############################################################################
@@ -79,45 +77,92 @@ resource "openstack_lb_loadbalancer_v2" "db_lb" {
   admin_state_up = true
 }
 
-# Listener TCP 5432 → Pour les APP AWS
-resource "openstack_lb_listener_v2" "db_listener" {
-  name            = "${var.app_name}-db-listener-pg"
+# =======================================================================
+# 1. POOL READ/WRITE (Master) - Port 5000
+# =======================================================================
+resource "openstack_lb_listener_v2" "db_rw_listener" {
+  name            = "${var.app_name}-db-listener-rw"
   protocol        = "TCP"
-  protocol_port   = 5432
+  protocol_port   = 5000
   loadbalancer_id = openstack_lb_loadbalancer_v2.db_lb.id
 }
 
-resource "openstack_lb_pool_v2" "db_pool" {
-  name        = "${var.app_name}-db-pool"
+resource "openstack_lb_pool_v2" "db_rw_pool" {
+  name        = "${var.app_name}-db-rw-pool"
   protocol    = "TCP"
   lb_method   = "ROUND_ROBIN"
-  listener_id = openstack_lb_listener_v2.db_listener.id
+  listener_id = openstack_lb_listener_v2.db_rw_listener.id
 }
 
-# Health check via Patroni REST API (HTTP 200 = je suis primary)
-resource "openstack_lb_monitor_v2" "db_monitor" {
-  name           = "${var.app_name}-db-monitor"
-  pool_id        = openstack_lb_pool_v2.db_pool.id
+# Health check via Patroni REST API (HTTP 200 on /primary)
+resource "openstack_lb_monitor_v2" "db_rw_monitor" {
+  name           = "${var.app_name}-db-rw-monitor"
+  pool_id        = openstack_lb_pool_v2.db_rw_pool.id
   type           = "HTTP"
   delay          = 10
   timeout        = 5
   max_retries    = 3
   url_path       = "/primary"
   expected_codes = "200"
-  # Patroni API est sur le port 8008
-  admin_state_up = true
 }
 
-resource "openstack_lb_member_v2" "db_primary_member" {
-  pool_id       = openstack_lb_pool_v2.db_pool.id
+# We add BOTH VMs to the pool. Octavia will only send traffic to the one passing the /primary check.
+resource "openstack_lb_member_v2" "db_primary_member_rw" {
+  pool_id       = openstack_lb_pool_v2.db_rw_pool.id
   address       = openstack_networking_port_v2.db_primary_port.all_fixed_ips[0]
-  protocol_port = 5432
+  protocol_port = 5432 # Traffic goes to Postgres
+  monitor_port  = 8008 # Health check goes to Patroni
 }
 
-resource "openstack_lb_member_v2" "db_replica_member" {
-  pool_id       = openstack_lb_pool_v2.db_pool.id
+resource "openstack_lb_member_v2" "db_replica_member_rw" {
+  pool_id       = openstack_lb_pool_v2.db_rw_pool.id
   address       = openstack_networking_port_v2.db_replica_port.all_fixed_ips[0]
   protocol_port = 5432
+  monitor_port  = 8008
+}
+
+# =======================================================================
+# 2. POOL READ-ONLY (Replica) - Port 5001
+# =======================================================================
+resource "openstack_lb_listener_v2" "db_ro_listener" {
+  name            = "${var.app_name}-db-listener-ro"
+  protocol        = "TCP"
+  protocol_port   = 5001
+  loadbalancer_id = openstack_lb_loadbalancer_v2.db_lb.id
+}
+
+resource "openstack_lb_pool_v2" "db_ro_pool" {
+  name        = "${var.app_name}-db-ro-pool"
+  protocol    = "TCP"
+  lb_method   = "ROUND_ROBIN"
+  listener_id = openstack_lb_listener_v2.db_ro_listener.id
+}
+
+# Health check via Patroni REST API (HTTP 200 on /replica)
+resource "openstack_lb_monitor_v2" "db_ro_monitor" {
+  name           = "${var.app_name}-db-ro-monitor"
+  pool_id        = openstack_lb_pool_v2.db_ro_pool.id
+  type           = "HTTP"
+  delay          = 10
+  timeout        = 5
+  max_retries    = 3
+  url_path       = "/replica"
+  expected_codes = "200"
+}
+
+# We add BOTH VMs to the pool. Octavia will only send traffic to the one passing the /replica check.
+resource "openstack_lb_member_v2" "db_primary_member_ro" {
+  pool_id       = openstack_lb_pool_v2.db_ro_pool.id
+  address       = openstack_networking_port_v2.db_primary_port.all_fixed_ips[0]
+  protocol_port = 5432
+  monitor_port  = 8008
+}
+
+resource "openstack_lb_member_v2" "db_replica_member_ro" {
+  pool_id       = openstack_lb_pool_v2.db_ro_pool.id
+  address       = openstack_networking_port_v2.db_replica_port.all_fixed_ips[0]
+  protocol_port = 5432
+  monitor_port  = 8008
 }
 
 ###############################################################################

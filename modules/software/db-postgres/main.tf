@@ -17,10 +17,8 @@ data "cloudinit_config" "db_primary" {
         - python3-venv
         - etcd-server
         - etcd-client
-        - haproxy
 
       write_files:
-        # --- etcd config ---
         - path: /etc/default/etcd
           content: |
             ETCD_NAME="node1"
@@ -33,7 +31,6 @@ data "cloudinit_config" "db_primary" {
             ETCD_INITIAL_CLUSTER_STATE="new"
             ETCD_INITIAL_CLUSTER_TOKEN="${var.app_name}-etcd-cluster"
 
-        # --- Patroni config ---
         - path: /etc/patroni/patroni.yml
           content: |
             scope: ${var.app_name}-cluster
@@ -92,55 +89,14 @@ data "cloudinit_config" "db_primary" {
                   username: replicator
                   password: "${var.replication_password}"
 
-        # --- HAProxy config ---
-        - path: /etc/haproxy/haproxy.cfg
-          content: |
-            global
-              maxconn 1000
-
-            defaults
-              mode tcp
-              timeout connect 10s
-              timeout client 30s
-              timeout server 30s
-
-            listen postgres_rw
-              bind *:5000
-              option httpchk GET /primary
-              http-check expect status 200
-              default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
-              server node1 ${var.primary_ip}:5432 maxconn 100 check port 8008
-              server node2 ${var.replica_ip}:5432 maxconn 100 check port 8008
-
-            listen postgres_ro
-              bind *:5001
-              option httpchk GET /replica
-              http-check expect status 200
-              default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
-              server node1 ${var.primary_ip}:5432 maxconn 100 check port 8008
-              server node2 ${var.replica_ip}:5432 maxconn 100 check port 8008
-
-            listen stats
-              bind *:7000
-              mode http
-              stats enable
-              stats uri /
-
       runcmd:
-        # Stop default PostgreSQL (Patroni le gère)
         - systemctl stop postgresql
         - systemctl disable postgresql
-
-        # Setup Patroni via venv
         - python3 -m venv /opt/patroni-venv
         - /opt/patroni-venv/bin/pip install patroni[etcd] psycopg2-binary
-
-        # Create patroni data dir
         - mkdir -p /var/lib/postgresql/data/patroni
         - chown -R postgres:postgres /var/lib/postgresql/data/patroni
         - chmod 700 /var/lib/postgresql/data/patroni
-
-        # Create systemd service for Patroni
         - |
           cat > /etc/systemd/system/patroni.service << 'UNIT'
           [Unit]
@@ -159,26 +115,13 @@ data "cloudinit_config" "db_primary" {
           [Install]
           WantedBy=multi-user.target
           UNIT
-
-        # Start services in order
         - systemctl daemon-reload
         - systemctl enable etcd && systemctl start etcd
         - sleep 5
         - systemctl enable patroni && systemctl start patroni
-        - sleep 10
-        - systemctl enable haproxy && systemctl restart haproxy
-
-        # Create the application database
         - sleep 15
-        - sudo -u postgres /opt/patroni-venv/bin/python -c "
-          import psycopg2;
-          conn = psycopg2.connect(host='127.0.0.1', port=5432, user='postgres', password='${var.postgres_password}');
-          conn.autocommit = True;
-          cur = conn.cursor();
-          cur.execute(\"SELECT 1 FROM pg_database WHERE datname='${var.db_name}'\");
-          if not cur.fetchone():
-            cur.execute('CREATE DATABASE ${var.db_name} OWNER ${var.db_user}');
-          conn.close()"
+        - |
+          sudo -u postgres /opt/patroni-venv/bin/python -c "import psycopg2; conn = psycopg2.connect(host='127.0.0.1', port=5432, user='postgres', password='${var.postgres_password}'); conn.autocommit = True; cur = conn.cursor(); cur.execute(\"SELECT 1 FROM pg_database WHERE datname='${var.db_name}'\"); row = cur.fetchone(); cur.execute('CREATE DATABASE \"${var.db_name}\" OWNER \"${var.db_user}\"') if not row else None; conn.close()"
     EOF
   }
 }
@@ -200,10 +143,8 @@ data "cloudinit_config" "db_replica" {
         - python3-venv
         - etcd-server
         - etcd-client
-        - haproxy
 
       write_files:
-        # --- etcd config ---
         - path: /etc/default/etcd
           content: |
             ETCD_NAME="node2"
@@ -216,7 +157,6 @@ data "cloudinit_config" "db_replica" {
             ETCD_INITIAL_CLUSTER_STATE="new"
             ETCD_INITIAL_CLUSTER_TOKEN="${var.app_name}-etcd-cluster"
 
-        # --- Patroni config ---
         - path: /etc/patroni/patroni.yml
           content: |
             scope: ${var.app_name}-cluster
@@ -275,51 +215,14 @@ data "cloudinit_config" "db_replica" {
                   username: replicator
                   password: "${var.replication_password}"
 
-        # --- HAProxy config (identique) ---
-        - path: /etc/haproxy/haproxy.cfg
-          content: |
-            global
-              maxconn 1000
-
-            defaults
-              mode tcp
-              timeout connect 10s
-              timeout client 30s
-              timeout server 30s
-
-            listen postgres_rw
-              bind *:5000
-              option httpchk GET /primary
-              http-check expect status 200
-              default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
-              server node1 ${var.primary_ip}:5432 maxconn 100 check port 8008
-              server node2 ${var.replica_ip}:5432 maxconn 100 check port 8008
-
-            listen postgres_ro
-              bind *:5001
-              option httpchk GET /replica
-              http-check expect status 200
-              default-server inter 3s fall 3 rise 2 on-marked-down shutdown-sessions
-              server node1 ${var.primary_ip}:5432 maxconn 100 check port 8008
-              server node2 ${var.replica_ip}:5432 maxconn 100 check port 8008
-
-            listen stats
-              bind *:7000
-              mode http
-              stats enable
-              stats uri /
-
       runcmd:
         - systemctl stop postgresql
         - systemctl disable postgresql
-
         - python3 -m venv /opt/patroni-venv
         - /opt/patroni-venv/bin/pip install patroni[etcd] psycopg2-binary
-
         - mkdir -p /var/lib/postgresql/data/patroni
         - chown -R postgres:postgres /var/lib/postgresql/data/patroni
         - chmod 700 /var/lib/postgresql/data/patroni
-
         - |
           cat > /etc/systemd/system/patroni.service << 'UNIT'
           [Unit]
@@ -338,15 +241,11 @@ data "cloudinit_config" "db_replica" {
           [Install]
           WantedBy=multi-user.target
           UNIT
-
         - systemctl daemon-reload
         - systemctl enable etcd && systemctl start etcd
         - sleep 5
         - systemctl enable patroni && systemctl start patroni
-        - sleep 10
-        - systemctl enable haproxy && systemctl restart haproxy
     EOF
   }
 }
-
 ###############################################################################

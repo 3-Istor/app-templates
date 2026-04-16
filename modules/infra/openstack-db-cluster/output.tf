@@ -15,5 +15,5 @@ output "db_public_ip" {
 }
 
 output "db_connection_string" {
-  value = "postgresql://${openstack_networking_floatingip_v2.db_fip.address}:5432"
+  value = "postgresql://${openstack_networking_floatingip_v2.db_fip.address}:5000"
 }
