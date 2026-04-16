@@ -19,6 +19,13 @@ data "cloudinit_config" "db_primary" {
         - etcd-client
 
       write_files:
+        - path: /etc/systemd/system/etcd.service.d/override.conf
+          content: |
+            [Service]
+            TimeoutStartSec=0
+            Restart=always
+            RestartSec=5
+
         - path: /etc/default/etcd
           content: |
             ETCD_NAME="node1"
@@ -40,7 +47,7 @@ data "cloudinit_config" "db_primary" {
               listen: 0.0.0.0:8008
               connect_address: ${var.primary_ip}:8008
 
-            etcd:
+            etcd3:
               hosts: ${var.primary_ip}:2379,${var.replica_ip}:2379
 
             bootstrap:
@@ -93,7 +100,7 @@ data "cloudinit_config" "db_primary" {
         - systemctl stop postgresql
         - systemctl disable postgresql
         - python3 -m venv /opt/patroni-venv
-        - /opt/patroni-venv/bin/pip install patroni[etcd] psycopg2-binary
+        - /opt/patroni-venv/bin/pip install patroni[etcd3] psycopg2-binary
         - mkdir -p /var/lib/postgresql/data/patroni
         - chown -R postgres:postgres /var/lib/postgresql/data/patroni
         - chmod 700 /var/lib/postgresql/data/patroni
@@ -109,17 +116,27 @@ data "cloudinit_config" "db_primary" {
           User=postgres
           Group=postgres
           ExecStart=/opt/patroni-venv/bin/patroni /etc/patroni/patroni.yml
-          Restart=on-failure
-          RestartSec=10
+          Restart=always
+          RestartSec=5
 
           [Install]
           WantedBy=multi-user.target
           UNIT
         - systemctl daemon-reload
-        - systemctl enable etcd && systemctl start etcd
-        - sleep 5
-        - systemctl enable patroni && systemctl start patroni
-        - sleep 15
+        - systemctl enable etcd
+        - systemctl start etcd --no-block
+        - |
+          while ! ETCDCTL_API=3 etcdctl endpoint health; do
+            echo "En attente du cluster etcd..."
+            sleep 5
+          done
+        - systemctl enable patroni
+        - systemctl start patroni
+        - |
+          while ! sudo -u postgres pg_isready -h 127.0.0.1 -p 5432; do
+            echo "En attente du demarrage de PostgreSQL par Patroni..."
+            sleep 5
+          done
         - |
           sudo -u postgres /opt/patroni-venv/bin/python -c "import psycopg2; conn = psycopg2.connect(host='127.0.0.1', port=5432, user='postgres', password='${var.postgres_password}'); conn.autocommit = True; cur = conn.cursor(); cur.execute(\"SELECT 1 FROM pg_database WHERE datname='${var.db_name}'\"); row = cur.fetchone(); cur.execute('CREATE DATABASE \"${var.db_name}\" OWNER \"${var.db_user}\"') if not row else None; conn.close()"
     EOF
@@ -145,6 +162,13 @@ data "cloudinit_config" "db_replica" {
         - etcd-client
 
       write_files:
+        - path: /etc/systemd/system/etcd.service.d/override.conf
+          content: |
+            [Service]
+            TimeoutStartSec=0
+            Restart=always
+            RestartSec=5
+
         - path: /etc/default/etcd
           content: |
             ETCD_NAME="node2"
@@ -166,7 +190,7 @@ data "cloudinit_config" "db_replica" {
               listen: 0.0.0.0:8008
               connect_address: ${var.replica_ip}:8008
 
-            etcd:
+            etcd3:
               hosts: ${var.primary_ip}:2379,${var.replica_ip}:2379
 
             bootstrap:
@@ -219,7 +243,7 @@ data "cloudinit_config" "db_replica" {
         - systemctl stop postgresql
         - systemctl disable postgresql
         - python3 -m venv /opt/patroni-venv
-        - /opt/patroni-venv/bin/pip install patroni[etcd] psycopg2-binary
+        - /opt/patroni-venv/bin/pip install patroni[etcd3] psycopg2-binary
         - mkdir -p /var/lib/postgresql/data/patroni
         - chown -R postgres:postgres /var/lib/postgresql/data/patroni
         - chmod 700 /var/lib/postgresql/data/patroni
@@ -235,16 +259,22 @@ data "cloudinit_config" "db_replica" {
           User=postgres
           Group=postgres
           ExecStart=/opt/patroni-venv/bin/patroni /etc/patroni/patroni.yml
-          Restart=on-failure
-          RestartSec=10
+          Restart=always
+          RestartSec=5
 
           [Install]
           WantedBy=multi-user.target
           UNIT
         - systemctl daemon-reload
-        - systemctl enable etcd && systemctl start etcd
-        - sleep 5
-        - systemctl enable patroni && systemctl start patroni
+        - systemctl enable etcd
+        - systemctl start etcd --no-block
+        - |
+          while ! ETCDCTL_API=3 etcdctl endpoint health; do
+            echo "En attente du cluster etcd..."
+            sleep 5
+          done
+        - systemctl enable patroni
+        - systemctl start patroni
     EOF
   }
 }
