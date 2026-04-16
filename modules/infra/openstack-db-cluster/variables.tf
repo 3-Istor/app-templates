@@ -24,11 +24,6 @@ variable "user_data_primary" {
   description = "cloud-init user data for primary DB"
 }
 
-variable "user_data_secondary" {
-  type        = string
-  description = "cloud-init user data for secondary DB"
-}
-
 variable "user_data_replica" {
   description = "cloud-init user data for DB replica"
   type        = string

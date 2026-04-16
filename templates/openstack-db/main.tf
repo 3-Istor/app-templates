@@ -38,8 +38,8 @@ module "infrastructure" {
   flavor_name  = var.flavor_name
   image_name   = var.image_name
 
-  user_data_primary   = module.software.user_data_primary
-  user_data_secondary = module.software.user_data_replica
+  user_data_primary = module.software.user_data_primary
+  user_data_replica = module.software.user_data_replica
 }
 
 module "software" {

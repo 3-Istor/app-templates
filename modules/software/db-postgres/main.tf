@@ -1,3 +1,48 @@
+locals {
+  setup_db_script = <<-EOF
+import psycopg2
+import time
+import urllib.request
+import sys
+
+# Give Patroni some time to settle
+time.sleep(5)
+
+# 1. Check if this node is the Patroni Leader via REST API
+try:
+    req = urllib.request.urlopen("http://127.0.0.1:8008/primary", timeout=5)
+    if req.getcode() != 200:
+        print("This node is a replica, skipping DB setup.")
+        sys.exit(0)
+except Exception as e:
+    print(f"Error or non-leader node, skipping setup: {e}")
+    sys.exit(0)
+
+# 2. If Leader, create User and DB
+conn = psycopg2.connect(
+    host='127.0.0.1',
+    port=5432,
+    user='postgres',
+    password='${var.postgres_password}'
+)
+conn.autocommit = True
+cur = conn.cursor()
+
+cur.execute("SELECT 1 FROM pg_roles WHERE rolname='${var.db_user}'")
+if not cur.fetchone():
+    cur.execute("CREATE ROLE \"${var.db_user}\" WITH LOGIN PASSWORD '${var.db_password}' CREATEDB")
+else:
+    cur.execute("ALTER ROLE \"${var.db_user}\" WITH PASSWORD '${var.db_password}'")
+
+cur.execute("SELECT 1 FROM pg_database WHERE datname='${var.db_name}'")
+if not cur.fetchone():
+    cur.execute("CREATE DATABASE \"${var.db_name}\" OWNER \"${var.db_user}\"")
+
+conn.close()
+print("Database setup successfully completed on the Leader node.")
+EOF
+}
+
 ################################# Cloud Init ##################################
 
 # --- PRIMARY node cloud-init ---
@@ -25,6 +70,11 @@ data "cloudinit_config" "db_primary" {
             TimeoutStartSec=0
             Restart=always
             RestartSec=5
+
+        - path: /tmp/setup_db.py
+          permissions: '0755'
+          encoding: b64
+          content: ${base64encode(local.setup_db_script)}
 
         - path: /etc/default/etcd
           content: |
@@ -88,6 +138,7 @@ data "cloudinit_config" "db_primary" {
               listen: 0.0.0.0:5432
               connect_address: ${var.primary_ip}:5432
               data_dir: /var/lib/postgresql/data/patroni
+              bin_dir: /usr/lib/postgresql/16/bin
               authentication:
                 superuser:
                   username: postgres
@@ -104,6 +155,7 @@ data "cloudinit_config" "db_primary" {
         - mkdir -p /var/lib/postgresql/data/patroni
         - chown -R postgres:postgres /var/lib/postgresql/data/patroni
         - chmod 700 /var/lib/postgresql/data/patroni
+        - chown postgres:postgres /etc/patroni/patroni.yml
         - |
           cat > /etc/systemd/system/patroni.service << 'UNIT'
           [Unit]
@@ -127,18 +179,17 @@ data "cloudinit_config" "db_primary" {
         - systemctl start etcd --no-block
         - |
           while ! ETCDCTL_API=3 etcdctl endpoint health; do
-            echo "En attente du cluster etcd..."
+            echo "Waiting for etcd cluster..."
             sleep 5
           done
         - systemctl enable patroni
         - systemctl start patroni
         - |
           while ! sudo -u postgres pg_isready -h 127.0.0.1 -p 5432; do
-            echo "En attente du demarrage de PostgreSQL par Patroni..."
+            echo "Waiting for PostgreSQL to start..."
             sleep 5
           done
-        - |
-          sudo -u postgres /opt/patroni-venv/bin/python -c "import psycopg2; conn = psycopg2.connect(host='127.0.0.1', port=5432, user='postgres', password='${var.postgres_password}'); conn.autocommit = True; cur = conn.cursor(); cur.execute(\"SELECT 1 FROM pg_database WHERE datname='${var.db_name}'\"); row = cur.fetchone(); cur.execute('CREATE DATABASE \"${var.db_name}\" OWNER \"${var.db_user}\"') if not row else None; conn.close()"
+        - sudo -u postgres /opt/patroni-venv/bin/python /tmp/setup_db.py
     EOF
   }
 }
@@ -168,6 +219,11 @@ data "cloudinit_config" "db_replica" {
             TimeoutStartSec=0
             Restart=always
             RestartSec=5
+
+        - path: /tmp/setup_db.py
+          permissions: '0755'
+          encoding: b64
+          content: ${base64encode(local.setup_db_script)}
 
         - path: /etc/default/etcd
           content: |
@@ -231,6 +287,7 @@ data "cloudinit_config" "db_replica" {
               listen: 0.0.0.0:5432
               connect_address: ${var.replica_ip}:5432
               data_dir: /var/lib/postgresql/data/patroni
+              bin_dir: /usr/lib/postgresql/16/bin
               authentication:
                 superuser:
                   username: postgres
@@ -247,6 +304,7 @@ data "cloudinit_config" "db_replica" {
         - mkdir -p /var/lib/postgresql/data/patroni
         - chown -R postgres:postgres /var/lib/postgresql/data/patroni
         - chmod 700 /var/lib/postgresql/data/patroni
+        - chown postgres:postgres /etc/patroni/patroni.yml
         - |
           cat > /etc/systemd/system/patroni.service << 'UNIT'
           [Unit]
@@ -270,11 +328,17 @@ data "cloudinit_config" "db_replica" {
         - systemctl start etcd --no-block
         - |
           while ! ETCDCTL_API=3 etcdctl endpoint health; do
-            echo "En attente du cluster etcd..."
+            echo "Waiting for etcd cluster..."
             sleep 5
           done
         - systemctl enable patroni
         - systemctl start patroni
+        - |
+          while ! sudo -u postgres pg_isready -h 127.0.0.1 -p 5432; do
+            echo "Waiting for PostgreSQL to start..."
+            sleep 5
+          done
+        - sudo -u postgres /opt/patroni-venv/bin/python /tmp/setup_db.py
     EOF
   }
 }

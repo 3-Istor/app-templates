@@ -10,7 +10,7 @@ Avant tout test, assure-toi que :
 - [ ] Le réseau `3-istor-cloud-internal-net` et le subnet existent
 - [ ] La keypair `3-istor-cloud-kp-admin` existe
 - [ ] L'image `ubuntu-22.04` est disponible dans Glance
-- [ ] Le flavor `m1.small` (ou celui que tu utilises) existe
+- [ ] Le flavor `m1.medium` (ou celui que tu utilises) existe
 - [ ] Tes variables d'environnement OpenStack sont chargées (`source openrc.sh`)
 - [ ] AWS credentials configurés (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_DEFAULT_REGION`)
 
@@ -50,7 +50,7 @@ terraform plan \
   -var="app_name=test-db-manual" \
   -var="project_name=3-istor-cloud" \
   -var="instance_count=2" \
-  -var="flavor_name=m1.small" \
+  -var="flavor_name=m1.medium" \
   -var="db_name=myappdb" \
   -var="db_user=myappuser" \
   -var="db_password=SuperSecretP@ss123"
@@ -65,7 +65,7 @@ terraform apply \
   -var="app_name=test-db-manual" \
   -var="project_name=3-istor-cloud" \
   -var="instance_count=2" \
-  -var="flavor_name=m1.small" \
+  -var="flavor_name=m1.medium" \
   -var="db_name=myappdb" \
   -var="db_user=myappuser" \
   -var="db_password=SuperSecretP@ss123" \
@@ -195,7 +195,7 @@ terraform destroy \
   -var="app_name=test-db-manual" \
   -var="project_name=3-istor-cloud" \
   -var="instance_count=2" \
-  -var="flavor_name=m1.small" \
+  -var="flavor_name=m1.medium" \
   -var="db_name=myappdb" \
   -var="db_user=myappuser" \
   -var="db_password=SuperSecretP@ss123" \
@@ -250,7 +250,7 @@ curl -X POST http://localhost:8000/api/v1/apps \
     "template_id": "openstack-db",
     "config": {
       "instance_count": 2,
-      "flavor_name": "m1.small",
+      "flavor_name": "m1.medium",
       "image_name": "ubuntu-22.04",
       "db_name": "testdb",
       "db_user": "testuser",
