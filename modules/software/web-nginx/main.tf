@@ -11,14 +11,14 @@ data "cloudinit_config" "web_config" {
       packages:
         - nginx
 
-      write_files:
-        - path: /var/www/html/index.html
-          content: |
-            <h1>Welcome to ${var.app_name}</h1>
-            <p>IP: $(hostname -I)</p>
-
       runcmd:
         - systemctl enable nginx
+        - |
+          IP=$(hostname -I | awk '{print $1}')
+          cat <<HTML > /var/www/html/index.html
+          <h1>Welcome to ${var.app_name}</h1>
+          <p>IP: $IP</p>
+          HTML
         - systemctl restart nginx
     EOF
   }
