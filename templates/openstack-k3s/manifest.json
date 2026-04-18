@@ -1,0 +1,17 @@
+{
+  "enabled": true,
+  "id": "openstack-k3s",
+  "name": "Kubernetes K3s (OpenStack)",
+  "description": "Deploy a single-node K3s Kubernetes cluster, ready to be provisioned by ArgoCD.",
+  "icon": "☸️",
+  "image_path": "icon.png",
+  "category": "Infrastructure",
+  "variables": [
+    {
+      "name": "flavor_name",
+      "label": "VM Size",
+      "type": "text",
+      "default": "m1.heavy"
+    }
+  ]
+}
