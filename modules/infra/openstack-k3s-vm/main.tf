@@ -27,7 +27,7 @@ resource "openstack_compute_instance_v2" "k3s_node" {
 
   security_groups = [
     data.openstack_networking_secgroup_v2.sg_base.name,
-    data.openstack_networking_secgroup_v2.sg_web.name,
+    # data.openstack_networking_secgroup_v2.sg_web.name,
     data.openstack_networking_secgroup_v2.sg_k3s.name
   ]
 
