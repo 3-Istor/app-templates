@@ -1,7 +1,8 @@
 variable "app_name" { type = string }
 
-variable "primary_ip" { type = string }
-variable "replica_ip" { type = string }
+variable "node_ips" {
+  type = list(string)
+}
 
 variable "db_name" {
   type    = string

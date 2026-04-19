@@ -36,5 +36,5 @@ variable "db_password" {
 
 variable "instance_count" {
   type    = number
-  default = 2
+  default = 3
 }
