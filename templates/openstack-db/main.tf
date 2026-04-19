@@ -33,21 +33,20 @@ locals {
 module "infrastructure" {
   source = "../../modules/infra/openstack-db-cluster"
 
-  app_name     = var.app_name
-  project_name = var.project_name
-  flavor_name  = var.flavor_name
-  image_name   = var.image_name
+  app_name       = var.app_name
+  project_name   = var.project_name
+  flavor_name    = var.flavor_name
+  image_name     = var.image_name
+  instance_count = var.instance_count
 
-  user_data_primary = module.software.user_data_primary
-  user_data_replica = module.software.user_data_replica
+  user_data_list = module.software.user_data_list
 }
 
 module "software" {
   source = "../../modules/software/db-postgres"
 
-  app_name   = var.app_name
-  primary_ip = module.infrastructure.db_primary_ip
-  replica_ip = module.infrastructure.db_replica_ip
+  app_name = var.app_name
+  node_ips = module.infrastructure.db_ips
 
   db_name              = var.db_name
   db_user              = var.db_user

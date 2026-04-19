@@ -19,13 +19,11 @@ variable "image_name" {
   description = "Instance image name"
 }
 
-variable "user_data_primary" {
-  type        = string
-  description = "cloud-init user data for primary DB"
+variable "instance_count" {
+  type    = number
+  default = 3
 }
 
-variable "user_data_replica" {
-  description = "cloud-init user data for DB replica"
-  type        = string
-  default     = ""
+variable "user_data_list" {
+  type = list(string)
 }
