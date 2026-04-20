@@ -1,7 +1,7 @@
 locals {
-  etcd_initial_cluster = join(",", [for i, ip in var.node_ips : "node${i + 1}=http://${ip}:2380"])
+  etcd_initial_cluster = "node1=http://${var.db_ips[0]}:2380,node2=http://${var.db_ips[1]}:2380,tiebreaker=http://${var.tiebreaker_ip}:2380"
 
-  etcd_hosts = join(",", [for ip in var.node_ips : "${ip}:2379"])
+  etcd_hosts = "${var.db_ips[0]}:2379,${var.db_ips[1]}:2379,${var.tiebreaker_ip}:2379"
 
   setup_db_script = <<-EOF
 import psycopg2
@@ -46,9 +46,8 @@ conn.close()
 print("Database setup successfully completed on the Leader node.")
 EOF
 }
-
 data "cloudinit_config" "db_node" {
-  count         = length(var.node_ips)
+  count         = length(var.db_ips)
   gzip          = true
   base64_encode = true
 
@@ -82,10 +81,10 @@ data "cloudinit_config" "db_node" {
           content: |
             ETCD_NAME="node${count.index + 1}"
             ETCD_DATA_DIR="/var/lib/etcd/default"
-            ETCD_LISTEN_PEER_URLS="http://${var.node_ips[count.index]}:2380"
-            ETCD_LISTEN_CLIENT_URLS="http://${var.node_ips[count.index]}:2379,http://127.0.0.1:2379"
-            ETCD_INITIAL_ADVERTISE_PEER_URLS="http://${var.node_ips[count.index]}:2380"
-            ETCD_ADVERTISE_CLIENT_URLS="http://${var.node_ips[count.index]}:2379"
+            ETCD_LISTEN_PEER_URLS="http://${var.db_ips[count.index]}:2380"
+            ETCD_LISTEN_CLIENT_URLS="http://${var.db_ips[count.index]}:2379,http://127.0.0.1:2379"
+            ETCD_INITIAL_ADVERTISE_PEER_URLS="http://${var.db_ips[count.index]}:2380"
+            ETCD_ADVERTISE_CLIENT_URLS="http://${var.db_ips[count.index]}:2379"
             ETCD_INITIAL_CLUSTER="${local.etcd_initial_cluster}"
             ETCD_INITIAL_CLUSTER_STATE="new"
             ETCD_INITIAL_CLUSTER_TOKEN="${var.app_name}-etcd-cluster"
@@ -97,8 +96,7 @@ data "cloudinit_config" "db_node" {
 
             restapi:
               listen: 0.0.0.0:8008
-              connect_address: ${var.node_ips[count.index]}:8008
-
+              connect_address: ${var.db_ips[count.index]}:8008
             etcd3:
               hosts: ${local.etcd_hosts}
 
@@ -138,7 +136,7 @@ data "cloudinit_config" "db_node" {
 
             postgresql:
               listen: 0.0.0.0:5432
-              connect_address: ${var.node_ips[count.index]}:5432
+              connect_address: ${var.db_ips[count.index]}:5432
               data_dir: /var/lib/postgresql/data/patroni
               bin_dir: /usr/lib/postgresql/16/bin
               authentication:
@@ -177,21 +175,46 @@ data "cloudinit_config" "db_node" {
           WantedBy=multi-user.target
           UNIT
         - systemctl daemon-reload
-        - systemctl enable etcd
-        - systemctl start etcd --no-block
-        - |
-          while ! ETCDCTL_API=3 etcdctl endpoint health; do
-            echo "Waiting for etcd cluster..."
-            sleep 5
-          done
-        - systemctl enable patroni
-        - systemctl start patroni
-        - |
-          while ! sudo -u postgres pg_isready -h 127.0.0.1 -p 5432; do
-            echo "Waiting for PostgreSQL to start..."
-            sleep 5
-          done
+        - systemctl enable etcd && systemctl start etcd --no-block
+        - systemctl enable patroni && systemctl start patroni
+        - while ! ETCDCTL_API=3 etcdctl endpoint health; do sleep 5; done
+        - while ! sudo -u postgres pg_isready -h 127.0.0.1 -p 5432; do sleep 5; done
         - sudo -u postgres /opt/patroni-venv/bin/python /tmp/setup_db.py
+    EOF
+  }
+}
+
+data "cloudinit_config" "tiebreaker_node" {
+  gzip          = true
+  base64_encode = true
+  part {
+    content_type = "text/cloud-config"
+    content      = <<-EOF
+      #cloud-config
+      package_update: true
+      packages: [ etcd-server, etcd-client ]
+      write_files:
+        - path: /etc/systemd/system/etcd.service.d/override.conf
+          content: |
+            [Service]
+            TimeoutStartSec=0
+            Restart=always
+            RestartSec=5
+        - path: /etc/default/etcd
+          content: |
+            ETCD_NAME="tiebreaker"
+            ETCD_DATA_DIR="/var/lib/etcd/default"
+            ETCD_LISTEN_PEER_URLS="http://${var.tiebreaker_ip}:2380"
+            ETCD_LISTEN_CLIENT_URLS="http://${var.tiebreaker_ip}:2379,http://127.0.0.1:2379"
+            ETCD_INITIAL_ADVERTISE_PEER_URLS="http://${var.tiebreaker_ip}:2380"
+            ETCD_ADVERTISE_CLIENT_URLS="http://${var.tiebreaker_ip}:2379"
+            ETCD_INITIAL_CLUSTER="${local.etcd_initial_cluster}"
+            ETCD_INITIAL_CLUSTER_STATE="new"
+            ETCD_INITIAL_CLUSTER_TOKEN="${var.app_name}-etcd-cluster"
+      runcmd:
+        - systemctl daemon-reload
+        - systemctl enable etcd
+        - systemctl start etcd
     EOF
   }
 }

@@ -13,3 +13,7 @@ output "db_public_ip" {
 output "db_connection_string" {
   value = "postgresql://${openstack_networking_floatingip_v2.db_fip.address}:5000"
 }
+
+output "tiebreaker_ip" {
+  value = openstack_networking_port_v2.tiebreaker_port.all_fixed_ips[0]
+}

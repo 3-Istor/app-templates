@@ -1,7 +1,13 @@
-variable "app_name" { type = string }
+variable "app_name" {
+  type = string
+}
 
-variable "node_ips" {
+variable "db_ips" {
   type = list(string)
+}
+
+variable "tiebreaker_ip" {
+  type = string
 }
 
 variable "db_name" {

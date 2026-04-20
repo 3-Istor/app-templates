@@ -1,4 +1,7 @@
-output "user_data_list" {
-  value       = data.cloudinit_config.db_node[*].rendered
-  description = "Liste des configurations Cloud-init pour chaque nœud DB"
+output "user_data_db" {
+  value = data.cloudinit_config.db_node[*].rendered
+}
+
+output "user_data_tiebreaker" {
+  value = data.cloudinit_config.tiebreaker_node.rendered
 }
