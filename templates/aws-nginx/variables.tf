@@ -30,22 +30,7 @@ variable "ami_id" {
 }
 
 variable "key_name" {
-  type    = string
+  type        = string
   description = "Nom de la paire de clés SSH existante dans AWS"
-}
-
-# ── Récupérés depuis les outputs du terraform-aws ─────────────────────────────
-variable "private_subnet_ids" {
-  type        = list(string)
-  description = "IDs des subnets privés (outputs du terraform-aws)"
-}
-
-variable "app_sg_id" {
-  type        = string
-  description = "ID du Security Group app (output du module security du terraform-aws)"
-}
-
-variable "target_group_arn" {
-  type        = string
-  description = "ARN du Target Group ALB (output du module loadbalancer du terraform-aws)"
+  default     = "arcl" # Basé sur arcl.pem vu dans tes fichiers
 }
