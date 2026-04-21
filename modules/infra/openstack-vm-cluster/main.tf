@@ -13,6 +13,8 @@ resource "openstack_compute_instance_v2" "app_nodes" {
   key_pair    = data.openstack_compute_keypair_v2.kp_admin.name
   user_data   = var.user_data
 
+  availability_zone = var.app_hosts[count.index % length(var.app_hosts)]
+
   security_groups = [
     data.openstack_networking_secgroup_v2.sg_base.name,
     data.openstack_networking_secgroup_v2.web_sg.name
