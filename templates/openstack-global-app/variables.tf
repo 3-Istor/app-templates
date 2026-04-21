@@ -67,3 +67,8 @@ variable "tiebreaker_host" {
   type    = string
   default = "nova:pae-node-2"
 }
+
+variable "app_hosts" {
+  type    = list(string)
+  default = ["nova:pae-node-2", "nova:pae-node-3"]
+}

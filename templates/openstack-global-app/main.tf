@@ -58,6 +58,7 @@ module "infra_app" {
   project_name   = var.project_name
   flavor_name    = var.app_flavor_name
   image_name     = var.app_image_name
+  app_hosts      = var.app_hosts
 
   user_data = module.software_app.user_data_rendered
 }
