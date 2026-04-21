@@ -6,7 +6,7 @@ cd templates/openstack-web-git
 # 1. Initialize
 ```sh
 terraform init \
-    -backend-config="bucket=3-istor-tf-infra" \
+    -backend-config="bucket=3-istor-tf-infra-aws" \
     -backend-config="key=apps/git-test-01/terraform.tfstate" \
     -backend-config="region=eu-west-3" \
     -backend-config="encrypt=true"

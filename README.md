@@ -29,7 +29,7 @@ Ensure you have sourced your `admin-openrc.sh` from Cloud Git repo before starti
 2.  **Initialize the backend dynamically (S3 State Lock):**
     ```bash
     terraform init \
-      -backend-config="bucket=3-istor-tf-infra" \
+      -backend-config="bucket=3-istor-tf-infra-aws" \
       -backend-config="key=apps/test-manuelle-01/terraform.tfstate" \
       -backend-config="region=eu-west-3" \
       -backend-config="encrypt=true"

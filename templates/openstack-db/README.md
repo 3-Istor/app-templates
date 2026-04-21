@@ -37,7 +37,7 @@ cd templates/openstack-db
 
 ```bash
 terraform init \
-  -backend-config="bucket=3-istor-tf-infra" \
+  -backend-config="bucket=3-istor-tf-infra-aws" \
   -backend-config="key=apps/test-db-manual/terraform.tfstate" \
   -backend-config="region=eu-west-3" \
   -backend-config="encrypt=true"
