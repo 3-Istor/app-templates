@@ -1,0 +1,13 @@
+{
+  "enabled": true,
+  "id": "openstack-global-app",
+  "name": "Full Stack App (Web + HA DB)",
+  "description": "Deploy a resilient Python Web App automatically connected to a Patroni HA PostgreSQL cluster in parallel.",
+  "icon": "🚀",
+  "image_path": "icon.png",
+  "category": "Full Stack",
+  "variables": [
+    { "name": "app_instance_count", "label": "Number of Web Nodes", "type": "number", "default": 2 },
+    { "name": "db_instance_count", "label": "Number of DB Nodes", "type": "number", "default": 2 }
+  ]
+}

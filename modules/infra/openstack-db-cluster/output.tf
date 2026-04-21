@@ -3,7 +3,7 @@ output "db_ips" {
 }
 
 output "db_lb_vip" {
-  value = openstack_lb_loadbalancer_v2.db_lb.vip_address
+  value = openstack_networking_port_v2.db_lb_port.all_fixed_ips[0]
 }
 
 output "db_public_ip" {

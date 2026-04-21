@@ -50,15 +50,22 @@ resource "openstack_compute_instance_v2" "tiebreaker_node" {
 
 ########################## LOAD BALANCER (Octavia) ############################
 
-resource "openstack_lb_loadbalancer_v2" "db_lb" {
-  name           = "${var.app_name}-db-lb"
-  vip_subnet_id  = data.openstack_networking_subnet_v2.internal_subnet.id
-  admin_state_up = true
-
+resource "openstack_networking_port_v2" "db_lb_port" {
+  name       = "${var.app_name}-db-lb-port"
+  network_id = data.openstack_networking_network_v2.internal_net.id
   security_group_ids = [
     data.openstack_networking_secgroup_v2.sg_base.id,
     data.openstack_networking_secgroup_v2.db_sg.id
   ]
+  fixed_ip {
+    subnet_id = data.openstack_networking_subnet_v2.internal_subnet.id
+  }
+}
+
+resource "openstack_lb_loadbalancer_v2" "db_lb" {
+  name           = "${var.app_name}-db-lb"
+  vip_port_id    = openstack_networking_port_v2.db_lb_port.id
+  admin_state_up = true
 }
 
 resource "openstack_lb_listener_v2" "db_listener_rw" {
@@ -97,13 +104,14 @@ resource "openstack_lb_member_v2" "db_members_rw" {
 ###############################################################################
 
 ################################ FLOATING IP ##################################
+
 resource "openstack_networking_floatingip_v2" "db_fip" {
   pool = data.openstack_networking_network_v2.ext_net.name
 }
 
 resource "openstack_networking_floatingip_associate_v2" "db_fip_assoc" {
   floating_ip = openstack_networking_floatingip_v2.db_fip.address
-  port_id     = openstack_lb_loadbalancer_v2.db_lb.vip_port_id
+  port_id     = openstack_networking_port_v2.db_lb_port.id
 }
 
 ###############################################################################
