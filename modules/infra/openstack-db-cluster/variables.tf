@@ -1,31 +1,42 @@
 variable "app_name" {
-  type        = string
-  description = "Application name"
-  default     = "test-db"
+  type = string
 }
 
 variable "project_name" {
-  type        = string
-  description = "Project name"
+  type = string
 }
 
 variable "flavor_name" {
-  type        = string
-  description = "Instance flavor name"
+  type = string
+}
+
+variable "tiebreaker_flavor_name" {
+  type = string
 }
 
 variable "image_name" {
-  type        = string
-  description = "Instance image name"
+  type = string
 }
 
-variable "user_data_primary" {
-  type        = string
-  description = "cloud-init user data for primary DB"
+variable "instance_count" {
+  type    = number
+  default = 2
 }
 
-variable "user_data_replica" {
-  description = "cloud-init user data for DB replica"
-  type        = string
-  default     = ""
+variable "user_data_db" {
+  type = list(string)
+}
+
+variable "user_data_tiebreaker" {
+  type = string
+}
+
+variable "db_hosts" {
+  type    = list(string)
+  default = ["nova:pae-node-2", "nova:pae-node-3"]
+}
+
+variable "tiebreaker_host" {
+  type    = string
+  default = "nova:pae-node-2"
 }

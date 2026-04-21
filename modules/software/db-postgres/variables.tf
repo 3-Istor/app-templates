@@ -1,7 +1,14 @@
-variable "app_name" { type = string }
+variable "app_name" {
+  type = string
+}
 
-variable "primary_ip" { type = string }
-variable "replica_ip" { type = string }
+variable "db_ips" {
+  type = list(string)
+}
+
+variable "tiebreaker_ip" {
+  type = string
+}
 
 variable "db_name" {
   type    = string

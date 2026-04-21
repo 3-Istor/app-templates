@@ -1,4 +1,3 @@
-# --- Génère des mots de passe si non fournis ---
 resource "random_password" "replication" {
   length  = 24
   special = false
@@ -21,33 +20,29 @@ locals {
   postgres_password    = random_password.postgres.result
 }
 
-# --- ÉTAPE 1 : Infra (crée les ports → on obtient les IPs) ---
-# On passe un user_data temporaire vide, on le remplacera pas.
-# mais besoin des IPs AVANT le cloud-init...
-#
-# Le module infra crée les ports d'abord.
-# On appelle le module software APRÈS avec les IPs.
-# Puis on passe le cloud-init au module infra.
-# Terraform résout ça grâce au dependency graph.
-
 module "infrastructure" {
   source = "../../modules/infra/openstack-db-cluster"
 
-  app_name     = var.app_name
-  project_name = var.project_name
-  flavor_name  = var.flavor_name
-  image_name   = var.image_name
+  app_name               = var.app_name
+  project_name           = var.project_name
+  flavor_name            = var.flavor_name
+  tiebreaker_flavor_name = var.tiebreaker_flavor_name
+  image_name             = var.image_name
+  instance_count         = 2
 
-  user_data_primary = module.software.user_data_primary
-  user_data_replica = module.software.user_data_replica
+  db_hosts        = var.db_hosts
+  tiebreaker_host = var.tiebreaker_host
+
+  user_data_db         = module.software.user_data_db
+  user_data_tiebreaker = module.software.user_data_tiebreaker
 }
 
 module "software" {
   source = "../../modules/software/db-postgres"
 
-  app_name   = var.app_name
-  primary_ip = module.infrastructure.db_primary_ip
-  replica_ip = module.infrastructure.db_replica_ip
+  app_name      = var.app_name
+  db_ips        = module.infrastructure.db_ips
+  tiebreaker_ip = module.infrastructure.tiebreaker_ip
 
   db_name              = var.db_name
   db_user              = var.db_user

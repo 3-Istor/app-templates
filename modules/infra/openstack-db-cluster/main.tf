@@ -1,70 +1,49 @@
 #################################### VMs ######################################
 
-resource "openstack_compute_servergroup_v2" "db_anti_affinity" {
-  name     = "${var.app_name}-db-anti-affinity"
-  policies = ["anti-affinity"]
-}
-
-resource "openstack_networking_port_v2" "db_primary_port" {
-  name       = "${var.app_name}-db-primary-port"
+resource "openstack_networking_port_v2" "db_ports" {
+  count      = var.instance_count
+  name       = "${var.app_name}-db-port-${count.index + 1}"
   network_id = data.openstack_networking_network_v2.internal_net.id
-
   security_group_ids = [
     data.openstack_networking_secgroup_v2.sg_base.id,
     data.openstack_networking_secgroup_v2.db_sg.id,
   ]
-
-  fixed_ip {
-    subnet_id = data.openstack_networking_subnet_v2.internal_subnet.id
-  }
+  fixed_ip { subnet_id = data.openstack_networking_subnet_v2.internal_subnet.id }
 }
 
-resource "openstack_networking_port_v2" "db_replica_port" {
-  name       = "${var.app_name}-db-replica-port"
-  network_id = data.openstack_networking_network_v2.internal_net.id
+resource "openstack_compute_instance_v2" "db_nodes" {
+  count       = var.instance_count
+  name        = "${var.app_name}-db-node-${count.index + 1}"
+  image_name  = var.image_name
+  flavor_name = var.flavor_name
+  key_pair    = data.openstack_compute_keypair_v2.kp_admin.name
+  user_data   = var.user_data_db[count.index]
 
+  availability_zone = var.db_hosts[count.index]
+
+  network { port = openstack_networking_port_v2.db_ports[count.index].id }
+}
+
+resource "openstack_networking_port_v2" "tiebreaker_port" {
+  name       = "${var.app_name}-tiebreaker-port"
+  network_id = data.openstack_networking_network_v2.internal_net.id
   security_group_ids = [
     data.openstack_networking_secgroup_v2.sg_base.id,
     data.openstack_networking_secgroup_v2.db_sg.id,
   ]
-
-  fixed_ip {
-    subnet_id = data.openstack_networking_subnet_v2.internal_subnet.id
-  }
+  fixed_ip { subnet_id = data.openstack_networking_subnet_v2.internal_subnet.id }
 }
 
-# --- VMs ---
-
-resource "openstack_compute_instance_v2" "db_primary" {
-  name        = "${var.app_name}-db-primary"
+resource "openstack_compute_instance_v2" "tiebreaker_node" {
+  name        = "${var.app_name}-tiebreaker"
   image_name  = var.image_name
-  flavor_name = var.flavor_name
+  flavor_name = var.tiebreaker_flavor_name
   key_pair    = data.openstack_compute_keypair_v2.kp_admin.name
-  user_data   = var.user_data_primary
+  user_data   = var.user_data_tiebreaker
 
-  network {
-    port = openstack_networking_port_v2.db_primary_port.id
-  }
+  availability_zone = var.tiebreaker_host
 
-  # scheduler_hints {
-  #   group = openstack_compute_servergroup_v2.db_anti_affinity.id
-  # }
-}
-
-resource "openstack_compute_instance_v2" "db_replica" {
-  name        = "${var.app_name}-db-replica"
-  image_name  = var.image_name
-  flavor_name = var.flavor_name
-  key_pair    = data.openstack_compute_keypair_v2.kp_admin.name
-  user_data   = var.user_data_replica
-
-  network {
-    port = openstack_networking_port_v2.db_replica_port.id
-  }
-
-  # scheduler_hints {
-  #   group = openstack_compute_servergroup_v2.db_anti_affinity.id
-  # }
+  network { port = openstack_networking_port_v2.tiebreaker_port.id }
 }
 
 ###############################################################################
@@ -75,29 +54,30 @@ resource "openstack_lb_loadbalancer_v2" "db_lb" {
   name           = "${var.app_name}-db-lb"
   vip_subnet_id  = data.openstack_networking_subnet_v2.internal_subnet.id
   admin_state_up = true
+
+  security_group_ids = [
+    data.openstack_networking_secgroup_v2.sg_base.id,
+    data.openstack_networking_secgroup_v2.db_sg.id
+  ]
 }
 
-# =======================================================================
-# 1. POOL READ/WRITE (Master) - Port 5000
-# =======================================================================
-resource "openstack_lb_listener_v2" "db_rw_listener" {
-  name            = "${var.app_name}-db-listener-rw"
+resource "openstack_lb_listener_v2" "db_listener_rw" {
+  name            = "${var.app_name}-listener-rw"
   protocol        = "TCP"
   protocol_port   = 5000
   loadbalancer_id = openstack_lb_loadbalancer_v2.db_lb.id
 }
 
-resource "openstack_lb_pool_v2" "db_rw_pool" {
-  name        = "${var.app_name}-db-rw-pool"
+resource "openstack_lb_pool_v2" "db_pool_rw" {
+  name        = "${var.app_name}-pool-rw"
   protocol    = "TCP"
   lb_method   = "ROUND_ROBIN"
-  listener_id = openstack_lb_listener_v2.db_rw_listener.id
+  listener_id = openstack_lb_listener_v2.db_listener_rw.id
 }
 
-# Health check via Patroni REST API (HTTP 200 on /primary)
-resource "openstack_lb_monitor_v2" "db_rw_monitor" {
-  name           = "${var.app_name}-db-rw-monitor"
-  pool_id        = openstack_lb_pool_v2.db_rw_pool.id
+resource "openstack_lb_monitor_v2" "db_monitor_rw" {
+  name           = "${var.app_name}-monitor-rw"
+  pool_id        = openstack_lb_pool_v2.db_pool_rw.id
   type           = "HTTP"
   delay          = 10
   timeout        = 5
@@ -106,61 +86,10 @@ resource "openstack_lb_monitor_v2" "db_rw_monitor" {
   expected_codes = "200"
 }
 
-# We add BOTH VMs to the pool. Octavia will only send traffic to the one passing the /primary check.
-resource "openstack_lb_member_v2" "db_primary_member_rw" {
-  pool_id       = openstack_lb_pool_v2.db_rw_pool.id
-  address       = openstack_networking_port_v2.db_primary_port.all_fixed_ips[0]
-  protocol_port = 5432 # Traffic goes to Postgres
-  monitor_port  = 8008 # Health check goes to Patroni
-}
-
-resource "openstack_lb_member_v2" "db_replica_member_rw" {
-  pool_id       = openstack_lb_pool_v2.db_rw_pool.id
-  address       = openstack_networking_port_v2.db_replica_port.all_fixed_ips[0]
-  protocol_port = 5432
-  monitor_port  = 8008
-}
-
-# =======================================================================
-# 2. POOL READ-ONLY (Replica) - Port 5001
-# =======================================================================
-resource "openstack_lb_listener_v2" "db_ro_listener" {
-  name            = "${var.app_name}-db-listener-ro"
-  protocol        = "TCP"
-  protocol_port   = 5001
-  loadbalancer_id = openstack_lb_loadbalancer_v2.db_lb.id
-}
-
-resource "openstack_lb_pool_v2" "db_ro_pool" {
-  name        = "${var.app_name}-db-ro-pool"
-  protocol    = "TCP"
-  lb_method   = "ROUND_ROBIN"
-  listener_id = openstack_lb_listener_v2.db_ro_listener.id
-}
-
-# Health check via Patroni REST API (HTTP 200 on /replica)
-resource "openstack_lb_monitor_v2" "db_ro_monitor" {
-  name           = "${var.app_name}-db-ro-monitor"
-  pool_id        = openstack_lb_pool_v2.db_ro_pool.id
-  type           = "HTTP"
-  delay          = 10
-  timeout        = 5
-  max_retries    = 3
-  url_path       = "/replica"
-  expected_codes = "200"
-}
-
-# We add BOTH VMs to the pool. Octavia will only send traffic to the one passing the /replica check.
-resource "openstack_lb_member_v2" "db_primary_member_ro" {
-  pool_id       = openstack_lb_pool_v2.db_ro_pool.id
-  address       = openstack_networking_port_v2.db_primary_port.all_fixed_ips[0]
-  protocol_port = 5432
-  monitor_port  = 8008
-}
-
-resource "openstack_lb_member_v2" "db_replica_member_ro" {
-  pool_id       = openstack_lb_pool_v2.db_ro_pool.id
-  address       = openstack_networking_port_v2.db_replica_port.all_fixed_ips[0]
+resource "openstack_lb_member_v2" "db_members_rw" {
+  count         = var.instance_count
+  pool_id       = openstack_lb_pool_v2.db_pool_rw.id
+  address       = openstack_networking_port_v2.db_ports[count.index].all_fixed_ips[0]
   protocol_port = 5432
   monitor_port  = 8008
 }
@@ -168,7 +97,6 @@ resource "openstack_lb_member_v2" "db_replica_member_ro" {
 ###############################################################################
 
 ################################ FLOATING IP ##################################
-
 resource "openstack_networking_floatingip_v2" "db_fip" {
   pool = data.openstack_networking_network_v2.ext_net.name
 }

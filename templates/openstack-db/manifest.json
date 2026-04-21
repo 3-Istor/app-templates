@@ -24,6 +24,12 @@
             "label": "Database Password",
             "type": "password",
             "default": ""
+        },
+        {
+            "name": "instance_count",
+            "label": "Number of Database Nodes (Min 3 for HA)",
+            "type": "number",
+            "default": 3
         }
     ]
 }

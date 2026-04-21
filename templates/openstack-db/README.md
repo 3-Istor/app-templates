@@ -49,7 +49,6 @@ terraform init \
 terraform plan \
   -var="app_name=test-db-manual" \
   -var="project_name=3-istor-cloud" \
-  -var="instance_count=2" \
   -var="flavor_name=m1.medium" \
   -var="db_name=myappdb" \
   -var="db_user=myappuser" \
@@ -64,7 +63,6 @@ terraform plan \
 terraform apply \
   -var="app_name=test-db-manual" \
   -var="project_name=3-istor-cloud" \
-  -var="instance_count=2" \
   -var="flavor_name=m1.medium" \
   -var="db_name=myappdb" \
   -var="db_user=myappuser" \
@@ -194,7 +192,6 @@ sudo patronictl -c /etc/patroni/patroni.yml list
 terraform destroy \
   -var="app_name=test-db-manual" \
   -var="project_name=3-istor-cloud" \
-  -var="instance_count=2" \
   -var="flavor_name=m1.medium" \
   -var="db_name=myappdb" \
   -var="db_user=myappuser" \

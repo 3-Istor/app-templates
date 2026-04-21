@@ -36,5 +36,20 @@ variable "db_password" {
 
 variable "instance_count" {
   type    = number
-  default = 2
+  default = 3
+}
+
+variable "tiebreaker_flavor_name" {
+  type    = string
+  default = "m1.nano"
+}
+
+variable "db_hosts" {
+  type    = list(string)
+  default = ["nova:pae-node-2", "nova:pae-node-3"]
+}
+
+variable "tiebreaker_host" {
+  type    = string
+  default = "nova:pae-node-2"
 }
