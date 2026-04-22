@@ -30,22 +30,22 @@ variable "ami_id" {
 }
 
 variable "key_name" {
-  type    = string
+  type        = string
   description = "Nom de la paire de clés SSH existante dans AWS"
 }
 
 # ── Récupérés depuis les outputs du terraform-aws ─────────────────────────────
-variable "private_subnet_ids" {
-  type        = list(string)
-  description = "IDs des subnets privés (outputs du terraform-aws)"
+variable "rule_priority" {
+  type        = number
+  description = "Priorité de la règle ALB (ex: 100). Doit être unique par app."
+  default     = 100
 }
 
-variable "app_sg_id" {
-  type        = string
-  description = "ID du Security Group app (output du module security du terraform-aws)"
+variable "cloudflare_api_token" {
+  type      = string
+  sensitive = true
 }
-
-variable "target_group_arn" {
+variable "cloudflare_zone_id" {
   type        = string
-  description = "ARN du Target Group ALB (output du module loadbalancer du terraform-aws)"
+  description = "L'ID de la zone 3istor.com (trouvable sur l'accueil du dashboard Cloudflare de ton domaine)"
 }
