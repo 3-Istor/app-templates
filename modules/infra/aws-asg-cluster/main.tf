@@ -1,75 +1,80 @@
-###############################################################################
-# modules/infra/aws-asg-cluster/main.tf
-# Crée un Auto Scaling Group AWS pour une app web.
-# Équivalent AWS du module openstack-vm-cluster.
-###############################################################################
+resource "aws_lb_target_group" "app_tg" {
+  name     = "${var.app_name}-tg"
+  port     = 80
+  protocol = "HTTP"
+  vpc_id   = var.vpc_id
 
-# ── Launch Template ───────────────────────────────────────────────────────────
-resource "aws_launch_template" "app" {
-  name_prefix   = "${var.app_name}-"
+  health_check {
+    enabled             = true
+    path                = "/"
+    port                = "traffic-port"
+    protocol            = "HTTP"
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+    timeout             = 5
+    interval            = 30
+    matcher             = "200"
+  }
+}
+
+resource "aws_lb_listener_rule" "app_rule" {
+  listener_arn = var.alb_listener_arn
+  priority     = var.rule_priority
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.app_tg.arn
+  }
+
+  condition {
+    host_header {
+      values = ["${var.app_name}.3istor.com"]
+    }
+  }
+}
+
+resource "aws_launch_template" "app_lt" {
+  name_prefix   = "${var.app_name}-lt-"
   image_id      = var.ami_id
   instance_type = var.instance_type
   key_name      = var.key_name
 
   vpc_security_group_ids = [var.app_sg_id]
-
-  # user_data est déjà base64+gzip via cloudinit_config (module software)
-  user_data = var.user_data
-
-  block_device_mappings {
-    device_name = "/dev/sda1"
-    ebs {
-      volume_type           = "gp3"
-      volume_size           = 20
-      delete_on_termination = true
-      encrypted             = true
-    }
-  }
+  user_data              = base64encode(var.user_data)
 
   metadata_options {
-    http_tokens = "required" # IMDSv2 obligatoire
+    http_tokens = "required"
   }
 
   tag_specifications {
     resource_type = "instance"
     tags = {
-      Name    = "${var.app_name}-node"
-      AppName = var.app_name
-      Project = var.project_name
+      Name = "${var.app_name}-node"
+      Role = "application"
     }
   }
 }
 
-# ── Auto Scaling Group ────────────────────────────────────────────────────────
-resource "aws_autoscaling_group" "app" {
-  name                      = "${var.app_name}-asg"
-  desired_capacity          = var.instance_count
-  min_size                  = var.instance_count
-  max_size                  = var.instance_count * 2
-  vpc_zone_identifier       = var.private_subnet_ids
-  target_group_arns         = [var.target_group_arn]
+resource "aws_autoscaling_group" "app_asg" {
+  name                = "${var.app_name}-asg"
+  vpc_zone_identifier = var.private_subnet_ids
+  target_group_arns   = [aws_lb_target_group.app_tg.arn]
+
   health_check_type         = "ELB"
-  health_check_grace_period = 60
+  health_check_grace_period = 300
+
+  min_size         = var.instance_count
+  max_size         = var.instance_count + 2
+  desired_capacity = var.instance_count
 
   launch_template {
-    id      = aws_launch_template.app.id
+    id      = aws_launch_template.app_lt.id
     version = "$Latest"
   }
 
   tag {
-    key                 = "AppName"
-    value               = var.app_name
+    key                 = "Name"
+    value               = "${var.app_name}-asg-node"
     propagate_at_launch = true
   }
-
-  tag {
-    key                 = "Project"
-    value               = var.project_name
-    propagate_at_launch = true
-  }
-}
-
-output "app_public_url" {
-  value       = "Récupérer le DNS de l'ALB depuis le module loadbalancer du terraform-aws"
-  description = "L'URL publique est celle de l'ALB défini dans terraform-aws"
 }
