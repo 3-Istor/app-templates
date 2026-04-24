@@ -10,7 +10,8 @@ data "cloudinit_config" "fastapi_config" {
       packages:
         - nginx
         - git
-        - pipx
+        - curl
+        - python3-venv
         - libpq-dev
 
       write_files:
@@ -35,9 +36,11 @@ data "cloudinit_config" "fastapi_config" {
             }
 
       runcmd:
-        - PIPX_HOME=/opt/pipx PIPX_BIN_DIR=/usr/local/bin pipx install poetry
+        - curl -sSL https://install.python-poetry.org | POETRY_HOME=/opt/poetry python3 -
+        - ln -s /opt/poetry/bin/poetry /usr/bin/poetry
 
         - git clone -b ${var.git_branch} ${var.git_repo_url} /opt/webapp/src
+
         - cd /opt/webapp/src
         - poetry install --no-root
 
@@ -51,7 +54,7 @@ data "cloudinit_config" "fastapi_config" {
           User=root
           WorkingDirectory=/opt/webapp/src
           EnvironmentFile=/opt/webapp/.env
-          ExecStart=/usr/local/bin/poetry run uvicorn main:app --host 127.0.0.1 --port 8080
+          ExecStart=/usr/bin/poetry run uvicorn main:app --host 127.0.0.1 --port 8080
           Restart=always
           RestartSec=3
 
