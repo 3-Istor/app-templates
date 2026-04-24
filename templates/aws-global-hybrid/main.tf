@@ -69,7 +69,7 @@ module "infra_app" {
   instance_count = var.app_instance_count
   project_name   = var.project_name
   instance_type  = var.app_instance_type
-  ami_id         = var.app_ami_id
+  ami_id         = data.aws_ami.ubuntu_2404.id
   key_name       = var.aws_key_name
 
   vpc_id             = data.terraform_remote_state.base_infra.outputs.vpc_id

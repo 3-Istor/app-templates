@@ -24,11 +24,6 @@ variable "app_instance_type" {
   default = "t3.micro"
 }
 
-variable "app_ami_id" {
-  type    = string
-  default = "ami-00c71bd4d220aa22a"
-}
-
 variable "aws_key_name" {
   type        = string
   description = "Key pair in AWS"
