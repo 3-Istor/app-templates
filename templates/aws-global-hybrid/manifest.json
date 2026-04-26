@@ -7,13 +7,7 @@
   "image_path": "icon.png",
   "category": "Full Stack",
   "variables": [
-    { "name": "app_instance_count", "label": "Number of AWS Web Nodes", "type": "number", "default": 2 },
-    { "name": "db_instance_count", "label": "Number of OpenStack DB Nodes", "type": "number", "default": 2 },
     { "name": "git_repo_url", "label": "FastAPI Git Repository URL", "type": "text", "required": true },
-    { "name": "git_branch", "label": "Git Branch", "type": "text", "default": "main" },
-    { "name": "db_password", "label": "Database Password (optional)", "type": "password", "default": "" },
-    { "name": "aws_key_name", "label": "AWS SSH Key Name", "type": "text", "default": "arcl" },
-    { "name": "cloudflare_api_token", "label": "Cloudflare API Token", "type": "password", "required": true },
-    { "name": "cloudflare_zone_id", "label": "Cloudflare Zone ID", "type": "text", "required": true }
+    { "name": "git_branch", "label": "Git Branch", "type": "text", "default": "main" }
   ]
 }

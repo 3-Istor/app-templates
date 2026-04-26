@@ -27,6 +27,7 @@ variable "app_instance_type" {
 variable "aws_key_name" {
   type        = string
   description = "Key pair in AWS"
+  default     = "arcl"
 }
 
 variable "rule_priority" {
