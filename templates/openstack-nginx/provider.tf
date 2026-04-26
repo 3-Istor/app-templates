@@ -14,15 +14,15 @@ terraform {
 }
 
 provider "openstack" {
-  user_name   = "admin"
-  tenant_name = var.project_name
-  auth_url    = "http://localhost:5000/v3"
+  # user_name   = "admin"
+  # tenant_name = var.project_name
+  # auth_url    = "http://localhost:5000/v3"
 
-  endpoint_overrides = {
-    "identity"      = "http://localhost:5000/v3/"
-    "network"       = "http://localhost:9696/v2.0/"
-    "compute"       = "http://localhost:8774/v2.1/"
-    "image"         = "http://localhost:9292/v2/"
-    "load-balancer" = "http://localhost:9876/v2/"
-  }
+  # endpoint_overrides = {
+  #   "identity"      = "http://localhost:5000/v3/"
+  #   "network"       = "http://localhost:9696/v2.0/"
+  #   "compute"       = "http://localhost:8774/v2.1/"
+  #   "image"         = "http://localhost:9292/v2/"
+  #   "load-balancer" = "http://localhost:9876/v2/"
+  # }
 }
