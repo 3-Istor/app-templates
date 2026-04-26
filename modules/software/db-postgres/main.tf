@@ -102,9 +102,9 @@ data "cloudinit_config" "db_node" {
 
             bootstrap:
               dcs:
-                ttl: 30
-                loop_wait: 10
-                retry_timeout: 10
+                ttl: 15
+                loop_wait: 5
+                retry_timeout: 5
                 maximum_lag_on_failover: 1048576
                 postgresql:
                   use_pg_rewind: true
