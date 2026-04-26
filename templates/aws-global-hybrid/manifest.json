@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "id": "aws-global-hybrid",
-  "name": "Hybrid App (AWS Web + OpenStack DB)",
+  "name": "Hybrid App",
   "description": "Deploy a highly available FastAPI app on AWS Auto Scaling Group, connected to a Patroni PostgreSQL cluster on OpenStack via WireGuard.",
   "icon": "🌩️",
   "image_path": "icon.png",
