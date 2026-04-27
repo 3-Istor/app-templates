@@ -4,6 +4,8 @@ resource "aws_lb_target_group" "app_tg" {
   protocol = "HTTP"
   vpc_id   = var.vpc_id
 
+  deregistration_delay = 10
+
   health_check {
     enabled             = true
     path                = "/"

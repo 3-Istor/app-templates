@@ -86,9 +86,9 @@ resource "openstack_lb_monitor_v2" "db_monitor_rw" {
   name           = "${var.app_name}-monitor-rw"
   pool_id        = openstack_lb_pool_v2.db_pool_rw.id
   type           = "HTTP"
-  delay          = 10
-  timeout        = 5
-  max_retries    = 3
+  delay          = 3
+  timeout        = 2
+  max_retries    = 2
   url_path       = "/primary"
   expected_codes = "200"
 }

@@ -1,7 +1,7 @@
 {
   "enabled": true,
   "id": "openstack-global-app",
-  "name": "Full Stack App (Web + HA DB)",
+  "name": "Full Stack App",
   "description": "Deploy a resilient Python Web App automatically connected to a Patroni HA PostgreSQL cluster in parallel.",
   "icon": "🚀",
   "image_path": "icon.png",

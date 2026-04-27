@@ -69,14 +69,15 @@ module "infra_app" {
   instance_count = var.app_instance_count
   project_name   = var.project_name
   instance_type  = var.app_instance_type
-  ami_id         = var.app_ami_id
+  ami_id         = data.aws_ami.ubuntu_2404.id
   key_name       = var.aws_key_name
 
   vpc_id             = data.terraform_remote_state.base_infra.outputs.vpc_id
   private_subnet_ids = data.terraform_remote_state.base_infra.outputs.private_subnet_ids
   app_sg_id          = data.terraform_remote_state.base_infra.outputs.app_sg_id
   alb_listener_arn   = data.terraform_remote_state.base_infra.outputs.alb_listener_arn
-  rule_priority      = var.rule_priority
+
+  rule_priority = random_integer.rule_priority.result # TODO: Manage this using the CMP to avoid conflicts !
 
   user_data = module.software_app.user_data_rendered
 }
