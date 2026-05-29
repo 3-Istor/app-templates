@@ -1,7 +1,7 @@
 variable "github_token" {
   type        = string
   sensitive   = true
-  description = "Installation access token from GitHub App"
+  description = "Installation access token from GitHub App (Used for repo creation)"
 }
 
 variable "github_owner" {
@@ -11,7 +11,7 @@ variable "github_owner" {
 
 variable "template_repo_name" {
   type        = string
-  description = "Name of the template repo (e.g. template-app-webapp-python-fastapi-react)"
+  description = "Name of the template repository"
 }
 
 variable "app_name" {
@@ -21,9 +21,23 @@ variable "app_name" {
 
 variable "project_name" {
   type        = string
-  description = "The name of the CNP project (Keycloak boundary)"
+  description = "The name of the CNP project"
 }
 
+variable "app_type" {
+  type        = string
+  description = "Type of app: 'static' or 'fullstack'"
+  default     = "static"
+}
+
+# --- Keycloak Variables ---
+variable "keycloak_realm" {
+  type        = string
+  description = "The Keycloak Realm name"
+  default     = "3istor"
+}
+
+# --- Vault Variables ---
 variable "vault_url" {
   type    = string
   default = "https://vault.3istor.com"
@@ -34,8 +48,15 @@ variable "vault_token" {
   sensitive = true
 }
 
-variable "app_type" {
+# --- Registry Auth Variables (Classic PAT) ---
+variable "github_registry_username" {
   type        = string
-  description = "Type of app: 'static' or 'fullstack'"
-  default     = "static"
+  description = "The GitHub username used to pull private images"
+  default     = "3-Istor"
+}
+
+variable "github_registry_token" {
+  type        = string
+  sensitive   = true
+  description = "Classic Personal Access Token (PAT) with strictly 'read:packages' scope"
 }

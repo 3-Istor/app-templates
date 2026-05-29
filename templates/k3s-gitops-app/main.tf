@@ -48,7 +48,31 @@ resource "github_repository_file" "values_frontend" {
 }
 
 # ==============================================================================
-# 2. SECRETS MANAGEMENT (VAULT)
+# 2. KEYCLOAK OIDC SSO CLIENT (Explicit and secure redirect URIs)
+# ==============================================================================
+
+# Create a dedicated OIDC Client for this project's application
+resource "keycloak_openid_client" "app_client" {
+  realm_id                     = var.keycloak_realm
+  client_id                    = "cnp-${var.project_name}-${var.app_name}"
+  name                         = "SSO Client for ${var.app_name}"
+  enabled                      = true
+  access_type                  = "CONFIDENTIAL"
+  standard_flow_enabled        = true
+  direct_access_grants_enabled = false
+
+  # Explicit redirects based on the dynamic app hostname (No Wildcards!)
+  valid_redirect_uris = [
+    "https://${var.app_name}.3istor.com/oauth2/callback"
+  ]
+
+  valid_post_logout_redirect_uris = [
+    "https://${var.app_name}.3istor.com/"
+  ]
+}
+
+# ==============================================================================
+# 3. SECRETS & VAULT CONFIGURATION
 # ==============================================================================
 
 # Generate a secure random password for the application database
@@ -57,18 +81,31 @@ resource "random_password" "db_password" {
   special = false
 }
 
-# Store generated secrets in the project's Vault path
+# Write application secrets AND the Keycloak Client Secret to Vault's subfolder!
+# This allows Envoy Gateway (via VSO) to authenticate users for this app
 resource "vault_kv_secret_v2" "app_secrets" {
   mount               = "kvv2"
   name                = "projects/${var.project_name}/${var.app_name}"
   delete_all_versions = true
   data_json = jsonencode({
     database-password = random_password.db_password.result
+    client-secret     = keycloak_openid_client.app_client.client_secret # Injected for Envoy Gateway OIDC
   })
 }
 
+# CREATE THE VAULT KUBERNETES ROLE (This resolves the VSO bug!)
+# This binds strictly to the vault-secrets-operator ServiceAccount within the target namespace context
+resource "vault_kubernetes_auth_backend_role" "vso_role" {
+  backend                          = "kubernetes"
+  role_name                        = "${var.project_name}-${var.app_name}-role"
+  bound_service_account_names      = ["vault-secrets-operator"]
+  bound_service_account_namespaces = ["vault-secrets-operator"]
+  token_ttl                        = 86400
+  token_policies                   = ["project-${var.project_name}-dev-policy"] # Bound to the parent project policy
+}
+
 # ==============================================================================
-# 3. KUBERNETES TARGET NAMESPACE & REGISTRY AUTHENTICATION (Day-0 Bootstrap)
+# 4. KUBERNETES TARGET NAMESPACE & REGISTRY AUTHENTICATION (Day-0 Bootstrap)
 # ==============================================================================
 
 # Explicitly create the namespace to bootstrap secrets before pods are deployed
@@ -78,7 +115,7 @@ resource "kubernetes_namespace" "app_ns" {
   }
 }
 
-# Generate the app-registry secret dynamically using the temporary installation token
+# Generate the app-registry secret dynamically using the Classic packages pull PAT (K3s/Containerd compliant)
 resource "kubernetes_secret" "app_registry" {
   metadata {
     name      = "app-registry"
@@ -93,15 +130,15 @@ resource "kubernetes_secret" "app_registry" {
       auths = {
         # 1. Standard key
         "ghcr.io" = {
-          username = "x-access-token"
-          password = var.github_token
-          auth     = base64encode("x-access-token:${var.github_token}")
+          username = var.github_registry_username
+          password = var.github_registry_token
+          auth     = base64encode("${var.github_registry_username}:${var.github_registry_token}")
         },
         # 2. Full URL key (often required by containerd/K3s)
         "https://ghcr.io" = {
-          username = "x-access-token"
-          password = var.github_token
-          auth     = base64encode("x-access-token:${var.github_token}")
+          username = var.github_registry_username
+          password = var.github_registry_token
+          auth     = base64encode("${var.github_registry_username}:${var.github_registry_token}")
         }
       }
     })
@@ -109,7 +146,7 @@ resource "kubernetes_secret" "app_registry" {
 }
 
 # ==============================================================================
-# 4. ARGOCD DELIVERY (GITOPS APPLICATIONS)
+# 5. ARGOCD DELIVERY (GITOPS APPLICATIONS - MULTI-SOURCES FIXED)
 # ==============================================================================
 
 locals {
@@ -135,7 +172,7 @@ resource "kubernetes_manifest" "argocd_application" {
       ]
     }
     spec = {
-      project = "default"
+      project = var.project_name
 
       # Combined Sources: Central Helm Chart + Developer's custom values.yaml
       sources = [
@@ -154,13 +191,13 @@ resource "kubernetes_manifest" "argocd_application" {
           # Source 2: The developer's repository (private code + deploy/values.yaml)
           repoURL        = github_repository.app.html_url
           targetRevision = "HEAD"
-          ref            = "values" # Alias mapped above as $values
+          ref            = "values"
         }
       ]
 
       destination = {
         server    = "https://kubernetes.default.svc"
-        namespace = "${var.project_name}-${var.app_name}"
+        namespace = kubernetes_namespace.app_ns.metadata[0].name
       }
       syncPolicy = {
         automated = {
@@ -176,7 +213,7 @@ resource "kubernetes_manifest" "argocd_application" {
 }
 
 # ==============================================================================
-# 5. ARGOCD IMAGE UPDATER CONFIGURATION
+# 6. ARGOCD IMAGE UPDATER CONFIGURATION
 # ==============================================================================
 
 resource "kubernetes_manifest" "argocd_image_updater" {
