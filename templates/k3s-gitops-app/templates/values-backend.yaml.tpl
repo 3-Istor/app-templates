@@ -20,6 +20,9 @@ secrets:
 imagePullSecrets:
   - name: app-registry
 
+ingress:
+  enabled: false
+
 resources:
   requests:
     cpu: "100m"

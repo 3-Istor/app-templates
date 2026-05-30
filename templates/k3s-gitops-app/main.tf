@@ -48,10 +48,16 @@ resource "github_repository_file" "values_frontend" {
 }
 
 # ==============================================================================
-# 2. KEYCLOAK OIDC SSO CLIENT (Explicit and secure redirect URIs)
+# 2. KEYCLOAK OIDC SSO CLIENT (With Project-Level Authorization)
 # ==============================================================================
 
-# Create a dedicated OIDC Client for this project's application
+# Dynamically fetch the project-specific restricted authentication flow
+data "keycloak_authentication_flow" "project_flow" {
+  realm_id = var.keycloak_realm
+  alias    = "browser-project-${var.project_name}"
+}
+
+# Create the dedicated OIDC Client for this project's application
 resource "keycloak_openid_client" "app_client" {
   realm_id                     = var.keycloak_realm
   client_id                    = "cnp-${var.project_name}-${var.app_name}"
@@ -61,7 +67,10 @@ resource "keycloak_openid_client" "app_client" {
   standard_flow_enabled        = true
   direct_access_grants_enabled = false
 
-  # Explicit redirects based on the dynamic app hostname (No Wildcards!)
+  authentication_flow_binding_overrides {
+    browser_id = data.keycloak_authentication_flow.project_flow.id
+  }
+
   valid_redirect_uris = [
     "https://${var.app_name}.3istor.com/oauth2/callback"
   ]
@@ -109,17 +118,20 @@ resource "vault_kubernetes_auth_backend_role" "vso_role" {
 # ==============================================================================
 
 # Explicitly create the namespace to bootstrap secrets before pods are deployed
-resource "kubernetes_namespace" "app_ns" {
+resource "kubernetes_namespace_v1" "app_ns" {
   metadata {
     name = "${var.project_name}-${var.app_name}"
+    labels = {
+      prod-gateway-access = "true"
+    }
   }
 }
 
 # Generate the app-registry secret dynamically using the Classic packages pull PAT (K3s/Containerd compliant)
-resource "kubernetes_secret" "app_registry" {
+resource "kubernetes_secret_v1" "app_registry" {
   metadata {
     name      = "app-registry"
-    namespace = kubernetes_namespace.app_ns.metadata[0].name
+    namespace = kubernetes_namespace_v1.app_ns.metadata[0].name
   }
 
   type = "kubernetes.io/dockerconfigjson"
@@ -146,7 +158,70 @@ resource "kubernetes_secret" "app_registry" {
 }
 
 # ==============================================================================
-# 5. ARGOCD DELIVERY (GITOPS APPLICATIONS - MULTI-SOURCES FIXED)
+# 5. DEDICATED CLOUDFLARE MICRO-TUNNEL (Fully Automated Day-0)
+# ==============================================================================
+
+# Generate a random password for the dedicated tunnel secret
+resource "random_password" "tunnel_secret" {
+  length  = 64
+  special = false
+}
+
+# Create a dedicated Cloudflare Tunnel for this specific application
+resource "cloudflare_zero_trust_tunnel_cloudflared" "app_tunnel" {
+  account_id    = var.cloudflare_account_id
+  name          = "cnp-${var.project_name}-${var.app_name}-tunnel"
+  config_src    = "cloudflare"
+  tunnel_secret = base64encode(random_password.tunnel_secret.result)
+}
+
+resource "cloudflare_zero_trust_tunnel_cloudflared_config" "app_tunnel_config" {
+  account_id = var.cloudflare_account_id
+  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.app_tunnel.id
+
+  config = {
+    ingress = [
+      {
+        hostname = "${var.app_name}.3istor.com"
+        service  = "http://envoy-gateway-infra-shared-gateway-ac1e5388.envoy-gateway-system.svc.cluster.local:80"
+      },
+      {
+        service = "http_status:404"
+      }
+    ]
+  }
+}
+
+# Create the explicit, secure DNS CNAME record pointing to the dedicated tunnel
+resource "cloudflare_dns_record" "app_cname" {
+  zone_id = var.cloudflare_zone_id
+  name    = var.app_name
+  content = "${cloudflare_zero_trust_tunnel_cloudflared.app_tunnel.id}.cfargotunnel.com"
+  type    = "CNAME"
+  proxied = true
+  ttl     = 1
+}
+
+# Write the Tunnel Token into a Kubernetes Secret inside the application namespace
+resource "kubernetes_secret_v1" "tunnel_token" {
+  metadata {
+    name      = "cloudflare-tunnel-token"
+    namespace = kubernetes_namespace_v1.app_ns.metadata[0].name
+  }
+
+  type = "Opaque"
+
+  data = {
+    token = base64encode(jsonencode({
+      a = var.cloudflare_account_id
+      t = cloudflare_zero_trust_tunnel_cloudflared.app_tunnel.id
+      s = base64encode(random_password.tunnel_secret.result)
+    }))
+  }
+}
+
+# ==============================================================================
+# 6. ARGOCD DELIVERY (GITOPS APPLICATIONS)
 # ==============================================================================
 
 locals {
@@ -181,6 +256,7 @@ resource "kubernetes_manifest" "argocd_application" {
           repoURL        = "https://github.com/3-Istor/infra-templates.git"
           targetRevision = "HEAD"
           path           = "." # Root of infra-templates containing Chart.yaml
+          ref            = ""
           helm = {
             valueFiles = [
               var.app_type == "fullstack" ? "$values/deploy/values-${each.value}.yaml" : "$values/deploy/values.yaml"
@@ -191,13 +267,17 @@ resource "kubernetes_manifest" "argocd_application" {
           # Source 2: The developer's repository (private code + deploy/values.yaml)
           repoURL        = github_repository.app.html_url
           targetRevision = "HEAD"
+          path           = ""
           ref            = "values"
+          helm = {
+            valueFiles = []
+          }
         }
       ]
 
       destination = {
         server    = "https://kubernetes.default.svc"
-        namespace = kubernetes_namespace.app_ns.metadata[0].name
+        namespace = kubernetes_namespace_v1.app_ns.metadata[0].name
       }
       syncPolicy = {
         automated = {
@@ -205,15 +285,19 @@ resource "kubernetes_manifest" "argocd_application" {
           selfHeal = true
         }
         syncOptions = [
-          "ServerSideApply=true",
+          "ServerSideApply=true"
         ]
       }
     }
   }
+
+  field_manager {
+    force_conflicts = true
+  }
 }
 
 # ==============================================================================
-# 6. ARGOCD IMAGE UPDATER CONFIGURATION
+# 7. ARGOCD IMAGE UPDATER CONFIGURATION
 # ==============================================================================
 
 resource "kubernetes_manifest" "argocd_image_updater" {

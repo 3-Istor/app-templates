@@ -12,6 +12,14 @@ terraform {
       source  = "hashicorp/kubernetes"
       version = "~> 3.1"
     }
+    keycloak = {
+      source  = "keycloak/keycloak"
+      version = "~> 5.7"
+    }
+    cloudflare = {
+      source  = "cloudflare/cloudflare"
+      version = "5.19.1"
+    }
   }
 }
 
@@ -27,4 +35,15 @@ provider "vault" {
 
 provider "kubernetes" {
   config_path = "~/.kube/config" # Assuming local development, CMP will use cluster auth
+}
+
+provider "keycloak" {
+  client_id = "admin-cli"
+  url       = var.keycloak_url
+  username  = var.keycloak_admin_username
+  password  = var.keycloak_admin_password
+}
+
+provider "cloudflare" {
+  api_token = var.cloudflare_api_token
 }

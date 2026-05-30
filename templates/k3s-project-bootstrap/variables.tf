@@ -10,11 +10,13 @@ variable "project_description" {
 }
 
 variable "keycloak_url" {
-  type = string
+  type    = string
+  default = "https://admin-auth.3istor.com"
 }
 
 variable "keycloak_admin_username" {
-  type = string
+  type    = string
+  default = "admin"
 }
 
 variable "keycloak_admin_password" {
@@ -28,7 +30,8 @@ variable "keycloak_realm" {
 }
 
 variable "vault_url" {
-  type = string
+  type    = string
+  default = "https://vault.3istor.com"
 }
 
 variable "vault_token" {

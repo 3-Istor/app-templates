@@ -20,6 +20,14 @@ secrets:
 imagePullSecrets:
   - name: app-registry
 
+project_name: "${project_name}"
+app_name: "${app_name}"
+
+ingress:
+  enabled: true
+  hostname: "${app_name}.3istor.com"
+  sso_protected: true
+
 resources:
   requests:
     cpu: "100m"

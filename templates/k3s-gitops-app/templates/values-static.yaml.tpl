@@ -15,10 +15,19 @@ service:
       targetPort: 80 # Nginx default port
 
 secrets:
-  enabled: false
+  enabled: true
+  vaultPath: "kvv2/projects/${project_name}/${app_name}"
 
 imagePullSecrets:
   - name: app-registry
+
+project_name: "${project_name}"
+app_name: "${app_name}"
+
+ingress:
+  enabled: true
+  hostname: "${app_name}.3istor.com"
+  sso_protected: true
 
 resources:
   requests:
