@@ -13,6 +13,8 @@ terraform {
       version = "~> 3.1"
     }
   }
+
+  backend "s3" {}
 }
 
 provider "keycloak" {

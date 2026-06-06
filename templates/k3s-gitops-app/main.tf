@@ -220,6 +220,16 @@ resource "kubernetes_secret_v1" "tunnel_token" {
   }
 }
 
+resource "time_sleep" "wait_for_tunnel_disconnect" {
+  depends_on = [
+    cloudflare_zero_trust_tunnel_cloudflared.app_tunnel,
+    cloudflare_zero_trust_tunnel_cloudflared_config.app_tunnel_config
+  ]
+
+  create_duration  = "0s"
+  destroy_duration = "45s"
+}
+
 # ==============================================================================
 # 6. ARGOCD DELIVERY (GITOPS APPLICATIONS)
 # ==============================================================================
@@ -230,7 +240,8 @@ locals {
 }
 
 resource "kubernetes_manifest" "argocd_application" {
-  for_each = toset(local.components)
+  for_each   = toset(local.components)
+  depends_on = [time_sleep.wait_for_tunnel_disconnect]
 
   manifest = {
     apiVersion = "argoproj.io/v1alpha1"
@@ -301,7 +312,8 @@ resource "kubernetes_manifest" "argocd_application" {
 # ==============================================================================
 
 resource "kubernetes_manifest" "argocd_image_updater" {
-  for_each = toset(local.components)
+  for_each   = toset(local.components)
+  depends_on = [time_sleep.wait_for_tunnel_disconnect]
 
   manifest = {
     apiVersion = "argocd-image-updater.argoproj.io/v1alpha1"
@@ -349,5 +361,53 @@ resource "kubernetes_manifest" "argocd_image_updater" {
         }
       ]
     }
+  }
+}
+
+# ==============================================================================
+# 8. CLEANUP: GHCR PACKAGES DELETION (On Destroy)
+# ==============================================================================
+
+resource "null_resource" "delete_ghcr_packages" {
+  triggers = {
+    app_name     = var.app_name
+    github_owner = var.github_owner
+    app_type     = var.app_type
+    github_token = var.github_registry_token
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = <<EOT
+      #!/bin/bash
+
+      TOKEN="${self.triggers.github_token}"
+
+      if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
+        echo "⚠️ GitHub Classic PAT token is missing from state. Cannot delete GHCR packages."
+        exit 0
+      fi
+
+      # Preserve exact case for the organization owner, force lowercase for the package name
+      OWNER="${self.triggers.github_owner}"
+      APP_NAME=$(echo "${self.triggers.app_name}" | tr '[:upper:]' '[:lower:]')
+
+      delete_package() {
+        local pkg_name=$1
+        local encoded_pkg=$(echo "$pkg_name" | sed 's/\//%2F/g')
+
+        RESPONSE=$(curl -s -w "\nHTTP_STATUS:%%{http_code}" -X DELETE \
+          -H "Accept: application/vnd.github.v3+json" \
+          -H "Authorization: Bearer $TOKEN" \
+          "https://api.github.com/orgs/$OWNER/packages/container/$encoded_pkg")
+      }
+
+      if [ "${self.triggers.app_type}" = "fullstack" ]; then
+        delete_package "$APP_NAME/frontend"
+        delete_package "$APP_NAME/backend"
+      else
+        delete_package "$APP_NAME"
+      fi
+    EOT
   }
 }

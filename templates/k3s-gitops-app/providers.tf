@@ -21,6 +21,8 @@ terraform {
       version = "5.19.1"
     }
   }
+
+  backend "s3" {}
 }
 
 provider "github" {
