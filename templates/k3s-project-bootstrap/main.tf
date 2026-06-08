@@ -19,20 +19,23 @@ resource "keycloak_group" "project_admins" {
 # ==============================================================================
 
 # Create a Vault Policy for Human Developers (UI Access to their folder)
+# Create a Vault Policy for Human Developers (UI Access to their folder)
 resource "vault_policy" "project_developers" {
   name   = "project-${var.project_name}-dev-policy"
   policy = <<EOT
-# Allow managing secrets in their project folder
-path "kvv2/data/projects/${var.project_name}/*" {
-  capabilities = ["create", "read", "update", "delete", "list"]
+path "kvv2/metadata/projects/${var.project_name}" {
+  capabilities = ["list", "read"]
 }
-# Allow listing the project folder itself
+
 path "kvv2/metadata/projects/${var.project_name}/*" {
   capabilities = ["list", "read", "delete"]
 }
+
+path "kvv2/data/projects/${var.project_name}/*" {
+  capabilities = ["create", "read", "update", "delete", "list"]
+}
 EOT
 }
-
 # ==============================================================================
 # 3. ARGOCD SANDBOX (AppProject)
 # ==============================================================================
@@ -106,18 +109,28 @@ resource "keycloak_role" "project_access" {
   description = "Access role required for applications under the ${var.project_name} project"
 }
 
+data "keycloak_role" "openid_client_access" {
+  realm_id = var.keycloak_realm
+  name     = "openid_client_access"
+}
+
 # Assign the project access role to project members
 resource "keycloak_group_roles" "members_project_access" {
   realm_id = var.keycloak_realm
   group_id = keycloak_group.project_members.id
-  role_ids = [keycloak_role.project_access.id]
+  role_ids = [
+    keycloak_role.project_access.id,
+    data.keycloak_role.openid_client_access.id
+  ]
 }
 
-# Assign the project access role to project admins
 resource "keycloak_group_roles" "admins_project_access" {
   realm_id = var.keycloak_realm
   group_id = keycloak_group.project_admins.id
-  role_ids = [keycloak_role.project_access.id]
+  role_ids = [
+    keycloak_role.project_access.id,
+    data.keycloak_role.openid_client_access.id
+  ]
 }
 
 # -----------------------------------------------------------------------------
@@ -259,4 +272,26 @@ resource "keycloak_authentication_execution" "project_deny_access" {
   authenticator     = "deny-access-authenticator"
   requirement       = "REQUIRED"
   priority          = 20
+}
+
+data "vault_auth_backend" "oidc" {
+  path = "oidc"
+}
+
+resource "vault_identity_group" "project_devs" {
+  name     = "project-${var.project_name}-devs"
+  type     = "external"
+  policies = [vault_policy.project_developers.name]
+}
+
+resource "vault_identity_group_alias" "project_admins_alias" {
+  name           = "project-${var.project_name}-admins"
+  mount_accessor = data.vault_auth_backend.oidc.accessor
+  canonical_id   = vault_identity_group.project_devs.id
+}
+
+resource "vault_identity_group_alias" "project_members_alias" {
+  name           = "project-${var.project_name}-members"
+  mount_accessor = data.vault_auth_backend.oidc.accessor
+  canonical_id   = vault_identity_group.project_devs.id
 }
