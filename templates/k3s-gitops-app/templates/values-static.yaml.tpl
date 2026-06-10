@@ -29,6 +29,11 @@ ingress:
   hostname: "${app_name}.3istor.com"
   sso_protected: true
 
+db:
+  enabled: true
+  name: ${app_name}
+  storage: "1Gi"
+
 resources:
   requests:
     cpu: "100m"
