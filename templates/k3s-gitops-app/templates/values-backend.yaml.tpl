@@ -16,6 +16,7 @@ service:
 secrets:
   enabled: true
   vaultPath: "project-${project_name}/${app_name}"
+  vaultRole: "${project_name}-${app_name}-role"
 
 imagePullSecrets:
   - name: app-registry
@@ -30,3 +31,8 @@ resources:
   limits:
     cpu: "500m"
     memory: "256Mi"
+
+db:
+  enabled: true
+  name: ${app_name}
+  storage: "1Gi"
