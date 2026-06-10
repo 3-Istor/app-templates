@@ -16,7 +16,7 @@ service:
 
 secrets:
   enabled: true
-  vaultPath: "kvv2/projects/${project_name}/${app_name}"
+  vaultPath: "project-${project_name}/${app_name}"
 
 imagePullSecrets:
   - name: app-registry

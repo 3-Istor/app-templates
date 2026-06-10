@@ -93,8 +93,8 @@ resource "random_password" "db_password" {
 # Write application secrets AND the Keycloak Client Secret to Vault's subfolder!
 # This allows Envoy Gateway (via VSO) to authenticate users for this app
 resource "vault_kv_secret_v2" "app_secrets" {
-  mount               = "kvv2"
-  name                = "projects/${var.project_name}/${var.app_name}"
+  mount               = "project-${var.project_name}"
+  name                = var.app_name
   delete_all_versions = true
   data_json = jsonencode({
     database-password = random_password.db_password.result

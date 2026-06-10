@@ -18,20 +18,24 @@ resource "keycloak_group" "project_admins" {
 # 2. VAULT SECRETS ISOLATION
 # ==============================================================================
 
-# Create a Vault Policy for Human Developers (UI Access to their folder)
-# Create a Vault Policy for Human Developers (UI Access to their folder)
+resource "vault_mount" "project_kv" {
+  path        = "project-${var.project_name}"
+  type        = "kv"
+  options     = { version = "2" }
+  description = "Isolated secrets engine for project ${var.project_name}"
+}
+
 resource "vault_policy" "project_developers" {
   name   = "project-${var.project_name}-dev-policy"
   policy = <<EOT
-path "kvv2/metadata/projects/${var.project_name}" {
-  capabilities = ["list", "read"]
+path "sys/mounts" {
+  capabilities = ["read"]
+}
+path "sys/internal/ui/mounts/*" {
+  capabilities = ["read"]
 }
 
-path "kvv2/metadata/projects/${var.project_name}/*" {
-  capabilities = ["list", "read", "delete"]
-}
-
-path "kvv2/data/projects/${var.project_name}/*" {
+path "project-${var.project_name}/*" {
   capabilities = ["create", "read", "update", "delete", "list"]
 }
 EOT
