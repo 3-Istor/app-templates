@@ -69,6 +69,13 @@ resource "kubernetes_manifest" "argocd_project" {
         }
       ]
 
+      namespaceResourceWhitelist = [
+        {
+          group = "*"
+          kind  = "*"
+        }
+      ]
+
       # Define allowed cluster-scoped resources (e.g., Namespaces, CRDs)
       clusterResourceWhitelist = [
         {
