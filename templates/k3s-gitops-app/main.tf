@@ -1,3 +1,8 @@
+locals {
+  app_type   = var.template_repo_name == "template-app-webapp-python-fastapi-react" ? "fullstack" : "static"
+  components = local.app_type == "fullstack" ? ["frontend", "backend"] : ["app"]
+}
+
 # ==============================================================================
 # 1. GITHUB PRIVATE REPOSITORY PROVISIONING
 # ==============================================================================
@@ -17,7 +22,7 @@ resource "github_repository" "app" {
 
 # Dynamically inject the backend values file if the app is a full-stack type
 resource "github_repository_file" "values_backend" {
-  count      = var.app_type == "fullstack" ? 1 : 0
+  count      = local.app_type == "fullstack" ? 1 : 0
   repository = github_repository.app.name
   branch     = "main"
   file       = "deploy/values-backend.yaml"
@@ -34,9 +39,9 @@ resource "github_repository_file" "values_backend" {
 resource "github_repository_file" "values_frontend" {
   repository = github_repository.app.name
   branch     = "main"
-  file       = var.app_type == "fullstack" ? "deploy/values-frontend.yaml" : "deploy/values.yaml"
+  file       = local.app_type == "fullstack" ? "deploy/values-frontend.yaml" : "deploy/values.yaml"
   content = templatefile(
-    var.app_type == "fullstack" ? "${path.module}/templates/values-frontend.yaml.tpl" : "${path.module}/templates/values-static.yaml.tpl",
+    local.app_type == "fullstack" ? "${path.module}/templates/values-frontend.yaml.tpl" : "${path.module}/templates/values-static.yaml.tpl",
     {
       github_owner = lower(var.github_owner)
       app_name     = lower(var.app_name)
@@ -234,10 +239,6 @@ resource "time_sleep" "wait_for_tunnel_disconnect" {
 # 6. ARGOCD DELIVERY (GITOPS APPLICATIONS)
 # ==============================================================================
 
-locals {
-  # Logic to determine if we deploy one unified app or separate front/back services
-  components = var.app_type == "fullstack" ? ["frontend", "backend"] : ["app"]
-}
 
 resource "kubernetes_manifest" "argocd_application" {
   for_each   = toset(local.components)
@@ -270,7 +271,7 @@ resource "kubernetes_manifest" "argocd_application" {
           ref            = ""
           helm = {
             valueFiles = [
-              var.app_type == "fullstack" ? "$values/deploy/values-${each.value}.yaml" : "$values/deploy/values.yaml"
+              local.app_type == "fullstack" ? "$values/deploy/values-${each.value}.yaml" : "$values/deploy/values.yaml"
             ]
           }
         },
@@ -352,7 +353,7 @@ resource "kubernetes_manifest" "argocd_image_updater" {
             method = "git:secret:argocd/private-repo-creds"
             gitConfig = {
               branch          = "main"
-              writeBackTarget = var.app_type == "fullstack" ? "helmvalues:/deploy/values-${each.value}.yaml" : "helmvalues:/deploy/values.yaml"
+              writeBackTarget = local.app_type == "fullstack" ? "helmvalues:/deploy/values-${each.value}.yaml" : "helmvalues:/deploy/values.yaml"
               pullRequest = {
                 github = {}
               }
@@ -372,7 +373,7 @@ resource "null_resource" "delete_ghcr_packages" {
   triggers = {
     app_name     = var.app_name
     github_owner = var.github_owner
-    app_type     = var.app_type
+    app_type     = local.app_type
     github_token = var.github_registry_token
   }
 

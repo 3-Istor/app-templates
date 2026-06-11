@@ -23,12 +23,6 @@ variable "app_name" {
   description = "The name of the new application to create"
 }
 
-variable "app_type" {
-  type        = string
-  description = "The application architecture type (static or fullstack)"
-  default     = "static"
-}
-
 # ==============================================================================
 # PROJECT & CORE VARIABLES
 # ==============================================================================
