@@ -31,3 +31,5 @@ Thumbs.db
 *.swp
 
 scripts/secrets.sh
+
+commandes terraform.txt

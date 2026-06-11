@@ -97,8 +97,9 @@ resource "vault_kv_secret_v2" "app_secrets" {
   name                = var.app_name
   delete_all_versions = true
   data_json = jsonencode({
-    database-password = random_password.db_password.result
-    client-secret     = keycloak_openid_client.app_client.client_secret # Injected for Envoy Gateway OIDC
+    username      = "app" #pour cnpg
+    password      = random_password.db_password.result
+    client-secret = keycloak_openid_client.app_client.client_secret # Injected for Envoy Gateway OIDC
   })
 }
 
