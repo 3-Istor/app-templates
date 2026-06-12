@@ -180,19 +180,16 @@ destroy_state() {
 
     pushd "$template_dir" > /dev/null
 
-    # Clean previous state caches
-    rm -rf .terraform
+    rm -rf .terraform .terraform.lock.hcl
 
-    # Initialize backend with S3 config, non-interactively
-    terraform init -input=false \
+    terraform init -upgrade -input=false \
         -backend-config="bucket=$BUCKET" \
         -backend-config="key=$key" \
         -backend-config="region=$REGION" \
         -backend-config="encrypt=true" > /dev/null
 
     if [ $? -eq 0 ]; then
-        # Run the destruction, non-interactively
-        terraform destroy -auto-approve -input=false
+        terraform destroy -refresh=false -auto-approve -input=false
     else
         echo "❌ Failed to initialize backend for: $key"
     fi
