@@ -18,6 +18,10 @@ secrets:
   vaultPath: "project-${project_name}/${app_name}"
   vaultRole: "${project_name}-${app_name}-role"
 
+env:
+  - name: BACKEND_HOST
+    value: "http://${project_name}-${app_name}-backend-cnp-generic-app:8000"
+
 imagePullSecrets:
   - name: app-registry
 
