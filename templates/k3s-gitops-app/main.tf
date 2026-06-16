@@ -77,11 +77,11 @@ resource "keycloak_openid_client" "app_client" {
   }
 
   valid_redirect_uris = [
-    "https://${var.project_name}-${var.app_name}.3istor.com/oauth2/callback"
+    "https://${var.app_name}-${var.project_name}.3istor.com/oauth2/callback"
   ]
 
   valid_post_logout_redirect_uris = [
-    "https://${var.project_name}-${var.app_name}.3istor.com/"
+    "https://${var.app_name}-${var.project_name}.3istor.com/"
   ]
 }
 
@@ -188,7 +188,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "app_tunnel_config" {
   config = {
     ingress = [
       {
-        hostname = "${var.project_name}-${var.app_name}.3istor.com"
+        hostname = "${var.app_name}-${var.project_name}.3istor.com"
         service  = "http://envoy-gateway-infra-shared-gateway-ac1e5388.envoy-gateway-system.svc.cluster.local:80"
       },
       {

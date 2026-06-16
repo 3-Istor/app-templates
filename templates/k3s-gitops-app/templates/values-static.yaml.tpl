@@ -17,6 +17,7 @@ service:
 secrets:
   enabled: true
   vaultPath: "project-${project_name}/${app_name}"
+  vaultRole: "${project_name}-${app_name}-role"
 
 imagePullSecrets:
   - name: app-registry
@@ -26,7 +27,7 @@ app_name: "${app_name}"
 
 ingress:
   enabled: true
-  hostname: "${app_name}.3istor.com"
+  hostname: "${app_name}-${project_name}.3istor.com"
   sso_protected: true
 
 db:
