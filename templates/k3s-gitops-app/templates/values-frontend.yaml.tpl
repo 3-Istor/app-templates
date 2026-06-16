@@ -10,8 +10,8 @@ service:
   type: ClusterIP
   ports:
     - name: http
-      port: 8000
-      targetPort: 8000
+      port: 80
+      targetPort: 3001
 
 secrets:
   enabled: true
@@ -23,9 +23,6 @@ imagePullSecrets:
 
 project_name: "${project_name}"
 app_name: "${app_name}"
-
-tunnel:
-  enabled: true
 
 ingress:
   enabled: true
