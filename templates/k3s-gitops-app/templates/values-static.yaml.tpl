@@ -36,9 +36,8 @@ db:
 
 resources:
   requests:
-    cpu: "100m"
+    cpu: "50m"
     memory: "128Mi"
   limits:
     cpu: "100m"
-    # Kyverno compliance: requests == limits
     memory: "128Mi"
