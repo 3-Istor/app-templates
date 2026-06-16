@@ -201,7 +201,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "app_tunnel_config" {
 # Create the explicit, secure DNS CNAME record pointing to the dedicated tunnel
 resource "cloudflare_dns_record" "app_cname" {
   zone_id = var.cloudflare_zone_id
-  name    = "${var.project_name}-${var.app_name}"
+  name    = "${var.app_name}-${var.project_name}"
   content = "${cloudflare_zero_trust_tunnel_cloudflared.app_tunnel.id}.cfargotunnel.com"
   type    = "CNAME"
   proxied = true
