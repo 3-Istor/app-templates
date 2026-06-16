@@ -77,11 +77,11 @@ resource "keycloak_openid_client" "app_client" {
   }
 
   valid_redirect_uris = [
-    "https://${var.app_name}.3istor.com/oauth2/callback"
+    "https://${var.project_name}-${var.app_name}.3istor.com/oauth2/callback"
   ]
 
   valid_post_logout_redirect_uris = [
-    "https://${var.app_name}.3istor.com/"
+    "https://${var.project_name}-${var.app_name}.3istor.com/"
   ]
 }
 
@@ -188,7 +188,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "app_tunnel_config" {
   config = {
     ingress = [
       {
-        hostname = "${var.app_name}.3istor.com"
+        hostname = "${var.project_name}-${var.app_name}.3istor.com"
         service  = "http://envoy-gateway-infra-shared-gateway-ac1e5388.envoy-gateway-system.svc.cluster.local:80"
       },
       {
@@ -201,7 +201,7 @@ resource "cloudflare_zero_trust_tunnel_cloudflared_config" "app_tunnel_config" {
 # Create the explicit, secure DNS CNAME record pointing to the dedicated tunnel
 resource "cloudflare_dns_record" "app_cname" {
   zone_id = var.cloudflare_zone_id
-  name    = var.app_name
+  name    = "${var.project_name}-${var.app_name}"
   content = "${cloudflare_zero_trust_tunnel_cloudflared.app_tunnel.id}.cfargotunnel.com"
   type    = "CNAME"
   proxied = true
