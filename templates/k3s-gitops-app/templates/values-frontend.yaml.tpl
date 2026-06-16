@@ -33,6 +33,10 @@ ingress:
   hostname: "${app_name}-${project_name}.3istor.com"
   sso_protected: true
 
+auth:
+  realm: "${project_name}"
+  clientId: "cnp-${project_name}-${app_name}"
+
 resources:
   requests:
     cpu: "50m"

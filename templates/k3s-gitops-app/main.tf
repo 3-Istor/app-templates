@@ -56,25 +56,15 @@ resource "github_repository_file" "values_frontend" {
 # 2. KEYCLOAK OIDC SSO CLIENT (With Project-Level Authorization)
 # ==============================================================================
 
-# Dynamically fetch the project-specific restricted authentication flow
-data "keycloak_authentication_flow" "project_flow" {
-  realm_id = var.keycloak_realm
-  alias    = "browser-project-${var.project_name}"
-}
-
 # Create the dedicated OIDC Client for this project's application
 resource "keycloak_openid_client" "app_client" {
-  realm_id                     = var.keycloak_realm
+  realm_id                     = var.project_name
   client_id                    = "cnp-${var.project_name}-${var.app_name}"
   name                         = "SSO Client for ${var.app_name}"
   enabled                      = true
   access_type                  = "CONFIDENTIAL"
   standard_flow_enabled        = true
   direct_access_grants_enabled = false
-
-  authentication_flow_binding_overrides {
-    browser_id = data.keycloak_authentication_flow.project_flow.id
-  }
 
   valid_redirect_uris = [
     "https://${var.app_name}-${var.project_name}.3istor.com/oauth2/callback"

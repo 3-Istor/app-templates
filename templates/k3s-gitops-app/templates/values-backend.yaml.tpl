@@ -24,6 +24,10 @@ imagePullSecrets:
 ingress:
   enabled: false
 
+auth:
+  realm: "${project_name}"
+  clientId: "cnp-${project_name}-${app_name}"
+
 resources:
   requests:
     cpu: "50m"

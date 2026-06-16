@@ -306,3 +306,63 @@ resource "vault_identity_group_alias" "project_members_alias" {
   mount_accessor = data.vault_auth_backend.oidc.accessor
   canonical_id   = vault_identity_group.project_devs.id
 }
+
+# ==============================================================================
+# TENANT REALM (End-User Identity)
+# ==============================================================================
+
+resource "keycloak_realm" "tenant_realm" {
+  realm        = var.project_name
+  enabled      = true
+  display_name = "${title(var.project_name)} App Realm"
+
+  login_theme = "keycloak-theme-kube-lab"
+}
+
+# Create a local admin for this specific tenant realm
+resource "random_password" "tenant_admin_pwd" {
+  length  = 16
+  special = false
+}
+
+resource "keycloak_user" "tenant_admin" {
+  realm_id = keycloak_realm.tenant_realm.id
+  username = "admin"
+  enabled  = true
+  email    = "admin@${var.project_name}.local"
+
+  initial_password {
+    value     = random_password.tenant_admin_pwd.result
+    temporary = false
+  }
+}
+
+# Grant realm-admin rights to the tenant admin
+data "keycloak_openid_client" "tenant_realm_management" {
+  realm_id  = keycloak_realm.tenant_realm.id
+  client_id = "realm-management"
+}
+
+data "keycloak_role" "tenant_realm_admin_role" {
+  realm_id  = keycloak_realm.tenant_realm.id
+  client_id = data.keycloak_openid_client.tenant_realm_management.id
+  name      = "realm-admin"
+}
+
+resource "keycloak_user_roles" "tenant_admin_grants" {
+  realm_id = keycloak_realm.tenant_realm.id
+  user_id  = keycloak_user.tenant_admin.id
+  role_ids = [data.keycloak_role.tenant_realm_admin_role.id]
+}
+
+# Store Tenant Realm Admin credentials in the Project's Vault path
+resource "vault_kv_secret_v2" "tenant_realm_creds" {
+  mount               = vault_mount.project_kv.path
+  name                = "keycloak-tenant-admin"
+  delete_all_versions = true
+  data_json = jsonencode({
+    realm_url = "https://admin-auth.3istor.com/admin/${keycloak_realm.tenant_realm.realm}/console/"
+    username  = keycloak_user.tenant_admin.username
+    password  = random_password.tenant_admin_pwd.result
+  })
+}
