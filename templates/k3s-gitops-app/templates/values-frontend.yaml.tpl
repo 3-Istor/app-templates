@@ -24,6 +24,9 @@ imagePullSecrets:
 project_name: "${project_name}"
 app_name: "${app_name}"
 
+tunnel:
+  enabled: true
+
 ingress:
   enabled: true
   hostname: "${app_name}-${project_name}.3istor.com"

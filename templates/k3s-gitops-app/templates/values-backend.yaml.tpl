@@ -21,6 +21,9 @@ secrets:
 imagePullSecrets:
   - name: app-registry
 
+tunnel:
+  enabled: false
+
 ingress:
   enabled: false
 
