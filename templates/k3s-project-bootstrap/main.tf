@@ -366,3 +366,32 @@ resource "vault_kv_secret_v2" "tenant_realm_creds" {
     password  = random_password.tenant_admin_pwd.result
   })
 }
+
+# ==============================================================================
+# IDENTITY BROKERING (Allow Developers to log in with Platform accounts)
+# ==============================================================================
+
+# Register the Tenant Realm as a client in the Platform Realm (3istor)
+resource "keycloak_openid_client" "tenant_broker_client" {
+  realm_id              = var.keycloak_realm # "3istor"
+  client_id             = "broker-${var.project_name}"
+  name                  = "Broker for Tenant ${var.project_name}"
+  enabled               = true
+  access_type           = "CONFIDENTIAL"
+  standard_flow_enabled = true
+  valid_redirect_uris = [
+    "https://auth.3istor.com/realms/${var.project_name}/broker/3istor-platform/endpoint"
+  ]
+}
+
+# Configure the Tenant Realm to trust the Platform Realm
+resource "keycloak_oidc_identity_provider" "platform_idp" {
+  realm             = keycloak_realm.tenant_realm.id
+  alias             = "3istor-platform"
+  display_name      = "Log in with 3istor Platform"
+  authorization_url = "https://auth.3istor.com/realms/${var.keycloak_realm}/protocol/openid-connect/auth"
+  token_url         = "https://auth.3istor.com/realms/${var.keycloak_realm}/protocol/openid-connect/token"
+  client_id         = keycloak_openid_client.tenant_broker_client.client_id
+  client_secret     = keycloak_openid_client.tenant_broker_client.client_secret
+  default_scopes    = "openid profile email"
+}
