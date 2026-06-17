@@ -2,7 +2,6 @@
 replicaCount: 1
 
 image:
-  # No suffix for static single-container apps!
   repository: ghcr.io/${github_owner}/${app_name}
   tag: "latest"
 
@@ -12,7 +11,7 @@ service:
   ports:
     - name: http
       port: 80
-      targetPort: 80 # Nginx default port
+      targetPort: 80
 
 secrets:
   enabled: true
@@ -26,19 +25,19 @@ project_name: "${project_name}"
 app_name: "${app_name}"
 
 routes:
-  {{ app_name }}:
+  ${app_name}:
     auth:
       enabled: true
-      realm: "{{ project_name }}"
+      realm: "${project_name}"
       vault:
-        path: "kvv2/projects/{{ project_name }}/{{ app_name }}/envoy-auth"
-        role: "{{ project_name }}-{{ app_name }}-role"
+        path: "kvv2/projects/${project_name}/${app_name}/envoy-auth"
+        role: "${project_name}-${app_name}-role"
 
 ingress:
   enabled: true
   hostname: "${app_name}-${project_name}.3istor.com"
   sso_protected: true
-  realm: "{{ project_name }}"
+  realm: "${project_name}"
 
 auth:
   realm: "${project_name}"
