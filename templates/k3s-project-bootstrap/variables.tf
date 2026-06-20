@@ -38,3 +38,9 @@ variable "vault_token" {
   type      = string
   sensitive = true
 }
+
+variable "github_token" {
+  type        = string
+  sensitive   = true
+  description = "GitHub Classic PAT or Installation Token used to write to the cnp-projects repository"
+}

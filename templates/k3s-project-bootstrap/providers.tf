@@ -8,10 +8,6 @@ terraform {
       source  = "hashicorp/vault"
       version = "~> 5.9"
     }
-    kubernetes = {
-      source  = "hashicorp/kubernetes"
-      version = "~> 3.1"
-    }
   }
 
   backend "s3" {}
@@ -27,8 +23,4 @@ provider "keycloak" {
 provider "vault" {
   address = var.vault_url
   token   = var.vault_token
-}
-
-provider "kubernetes" {
-  config_path = "~/.kube/config"
 }

@@ -40,74 +40,6 @@ path "project-${var.project_name}/*" {
 }
 EOT
 }
-# ==============================================================================
-# 3. ARGOCD SANDBOX (AppProject)
-# ==============================================================================
-
-resource "kubernetes_manifest" "argocd_project" {
-  manifest = {
-    apiVersion = "argoproj.io/v1alpha1"
-    kind       = "AppProject"
-    metadata = {
-      name      = var.project_name
-      namespace = "argocd"
-      annotations = {
-        "cnp.3istor.com/description" = var.project_description
-      }
-    }
-    spec = {
-      description = "Isolated boundaries for project ${var.project_name}"
-
-      # Allow pulling from any GitHub repository
-      sourceRepos = ["*"]
-
-      # Restrict deployments strictly to namespaces starting with the project name
-      destinations = [
-        {
-          namespace = "${var.project_name}-*"
-          server    = "https://kubernetes.default.svc"
-        }
-      ]
-
-      namespaceResourceWhitelist = [
-        {
-          group = "*"
-          kind  = "*"
-        }
-      ]
-
-      # Define allowed cluster-scoped resources (e.g., Namespaces, CRDs)
-      clusterResourceWhitelist = [
-        {
-          group = ""
-          kind  = "Namespace"
-        }
-      ]
-
-      # RBAC: Map Keycloak groups to ArgoCD roles
-      roles = [
-        {
-          name        = "project-admins"
-          description = "Admin privileges for ${var.project_name}"
-          policies = [
-            "p, proj:${var.project_name}:project-admins, applications, *, ${var.project_name}/*, allow"
-          ]
-          # Maps to the Keycloak group created above
-          groups = ["project-${var.project_name}-admins"]
-        },
-        {
-          name        = "project-members"
-          description = "Read-only privileges for ${var.project_name}"
-          policies = [
-            "p, proj:${var.project_name}:project-members, applications, get, ${var.project_name}/*, allow"
-          ]
-          # Maps to the Keycloak group created above
-          groups = ["project-${var.project_name}-members"]
-        }
-      ]
-    }
-  }
-}
 
 # ==============================================================================
 # 4. PROJECT-SPECIFIC ACCESS ROLE AND AUTHENTICATION FLOW
@@ -394,4 +326,63 @@ resource "keycloak_oidc_identity_provider" "platform_idp" {
   client_id         = keycloak_openid_client.tenant_broker_client.client_id
   client_secret     = keycloak_openid_client.tenant_broker_client.client_secret
   default_scopes    = "openid profile email"
+}
+
+
+# ==============================================================================
+# Gatus
+# ==============================================================================
+resource "vault_kv_secret_v2" "project_system_secrets" {
+  mount               = vault_mount.project_kv.path
+  name                = "system/discord"
+  delete_all_versions = true
+  data_json = jsonencode({
+    "webhook-url" = var.discord_webhook_url
+  })
+}
+
+# ==============================================================================
+# Base helm chart
+# ==============================================================================
+
+provider "github" {
+  token = var.github_token
+  owner = "3-Istor"
+}
+
+resource "github_repository_file" "argocd_project_app" {
+  repository          = "cnp-projects"
+  branch              = "main"
+  file                = "projects/${var.project_name}.yaml"
+  commit_message      = "feat: Bootstrap project ${var.project_name} [skip ci]"
+  overwrite_on_create = true
+
+  content = <<-EOT
+    apiVersion: argoproj.io/v1alpha1
+    kind: Application
+    metadata:
+      name: ${var.project_name}-bootstrap
+      namespace: argocd
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/3-Istor/infra-templates.git # Ton repo de charts
+        targetRevision: HEAD
+        path: charts/cnp-project-base
+        helm:
+          values: |
+            projectName: "${var.project_name}"
+            features:
+              gatus: true
+      destination:
+        server: https://kubernetes.default.svc
+        namespace: project-${var.project_name}-system
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
+          - ServerSideApply=true
+  EOT
 }
