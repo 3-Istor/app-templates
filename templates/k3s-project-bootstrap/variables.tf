@@ -44,3 +44,8 @@ variable "github_token" {
   sensitive   = true
   description = "GitHub Classic PAT or Installation Token used to write to the cnp-projects repository"
 }
+
+variable "discord_webhook_url" {
+  type        = string
+  description = "Discord Webhook URL"
+}

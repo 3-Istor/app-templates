@@ -366,7 +366,7 @@ resource "github_repository_file" "argocd_project_app" {
     spec:
       project: default
       source:
-        repoURL: https://github.com/3-Istor/infra-templates.git # Ton repo de charts
+        repoURL: https://github.com/3-Istor/infra-templates.git
         targetRevision: HEAD
         path: charts/cnp-project-base
         helm:
