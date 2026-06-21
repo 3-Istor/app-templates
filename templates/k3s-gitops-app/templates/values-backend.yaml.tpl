@@ -13,6 +13,9 @@ service:
       port: 8000
       targetPort: 8000
 
+project_name: "${project_name}"
+app_name: "${app_name}"
+
 secrets:
   enabled: true
   vaultPath: "project-${project_name}/${app_name}"
@@ -40,3 +43,7 @@ db:
   enabled: true
   name: ${app_name}
   storage: "1Gi"
+
+monitoring:
+  enabled: true
+  path: "/health"

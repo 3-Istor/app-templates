@@ -49,3 +49,23 @@ variable "discord_webhook_url" {
   type        = string
   description = "Discord Webhook URL"
 }
+
+# ==============================================================================
+# CLOUDFLARE PROVIDER VARIABLES
+# ==============================================================================
+
+variable "cloudflare_api_token" {
+  type        = string
+  sensitive   = true
+  description = "Cloudflare API Token with DNS & Zero Trust permissions"
+}
+
+variable "cloudflare_account_id" {
+  type        = string
+  description = "Your Cloudflare Account ID (Found in your Cloudflare Dashboard)"
+}
+
+variable "cloudflare_zone_id" {
+  type        = string
+  description = "The Cloudflare Zone ID of your domain (e.g., 3istor.com)"
+}

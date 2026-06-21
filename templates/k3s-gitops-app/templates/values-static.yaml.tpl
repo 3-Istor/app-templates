@@ -55,3 +55,7 @@ resources:
   limits:
     cpu: "100m"
     memory: "128Mi"
+
+monitoring:
+  enabled: true
+  path: "/"

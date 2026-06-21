@@ -337,8 +337,27 @@ resource "vault_kv_secret_v2" "project_system_secrets" {
   name                = "system/discord"
   delete_all_versions = true
   data_json = jsonencode({
-    "webhook-url" = var.discord_webhook_url
+    "DISCORD_WEBHOOK_URL" = var.discord_webhook_url
   })
+}
+
+resource "vault_policy" "project_system_policy" {
+  name   = "project-${var.project_name}-system-policy"
+  policy = <<EOT
+# Pour un moteur KV v2, Vault exige d'ajouter "/data/" juste après le nom du mount
+path "project-${var.project_name}/data/system/*" {
+  capabilities = ["read"]
+}
+EOT
+}
+
+resource "vault_kubernetes_auth_backend_role" "project_system_role" {
+  backend                          = "kubernetes"
+  role_name                        = "project-${var.project_name}-system-role"
+  bound_service_account_names      = ["vault-secrets-operator"]
+  bound_service_account_namespaces = ["vault-secrets-operator"]
+  token_ttl                        = 86400
+  token_policies                   = [vault_policy.project_system_policy.name]
 }
 
 # ==============================================================================
@@ -366,9 +385,9 @@ resource "github_repository_file" "argocd_project_app" {
     spec:
       project: default
       source:
-        repoURL: https://github.com/3-Istor/infra-templates.git
+        repoURL: https://github.com/3-Istor/cnp-project-base.git
         targetRevision: HEAD
-        path: charts/cnp-project-base
+        path: .
         helm:
           values: |
             projectName: "${var.project_name}"
@@ -376,7 +395,7 @@ resource "github_repository_file" "argocd_project_app" {
               gatus: true
       destination:
         server: https://kubernetes.default.svc
-        namespace: project-${var.project_name}-system
+        namespace: ${var.project_name}-system
       syncPolicy:
         automated:
           prune: true
@@ -385,4 +404,21 @@ resource "github_repository_file" "argocd_project_app" {
           - CreateNamespace=true
           - ServerSideApply=true
   EOT
+}
+
+data "cloudflare_zero_trust_tunnel_cloudflared" "base_tunnel" {
+  account_id = var.cloudflare_account_id
+
+  filter = {
+    name = "3istor-cloud-tunnel"
+  }
+}
+
+resource "cloudflare_dns_record" "project_status_dns" {
+  zone_id = var.cloudflare_zone_id
+  name    = "status-${var.project_name}"
+  content = "${data.cloudflare_zero_trust_tunnel_cloudflared.base_tunnel.id}.cfargotunnel.com"
+  type    = "CNAME"
+  proxied = true
+  ttl     = 1
 }
