@@ -422,3 +422,12 @@ resource "cloudflare_dns_record" "project_status_dns" {
   proxied = true
   ttl     = 1
 }
+
+resource "cloudflare_dns_record" "project_offhours_dns" {
+  zone_id = var.cloudflare_zone_id
+  name    = "offhours-${var.project_name}"
+  content = "${data.cloudflare_zero_trust_tunnel_cloudflared.base_tunnel.id}.cfargotunnel.com"
+  type    = "CNAME"
+  proxied = true
+  ttl     = 1
+}

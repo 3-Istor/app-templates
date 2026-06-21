@@ -288,9 +288,19 @@ resource "kubernetes_manifest" "argocd_application" {
           selfHeal = true
         }
         syncOptions = [
-          "ServerSideApply=true"
+          "ServerSideApply=true",
+          "RespectIgnoreDifferences=true"
         ]
       }
+      ignoreDifferences = [
+        {
+          group = "apps"
+          kind  = "Deployment"
+          jsonPointers = [
+            "/spec/replicas"
+          ]
+        }
+      ]
     }
   }
 

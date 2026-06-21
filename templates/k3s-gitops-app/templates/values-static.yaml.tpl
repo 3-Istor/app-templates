@@ -59,3 +59,9 @@ resources:
 monitoring:
   enabled: true
   path: "/"
+
+offhours:
+  enabled: true
+  sleepAt: "0 1 * * *"
+  wakeAt: "0 7 * * *"
+  timezone: "Europe/Paris"
