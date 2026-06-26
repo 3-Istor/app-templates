@@ -123,7 +123,7 @@ destroy_state() {
         # 1. Extract app_name and project_name safely matching from the end of the Vault KV path
         VAULT_PATH=$(jq -r '.resources[] | select(.type == "vault_kv_secret_v2" and .name == "app_secrets") | .instances[0].attributes.path // empty' /tmp/temp.tfstate)
 
-        if [ -n "$VAULT_PATH" ]; then
+        if [ -n "$VAULT_PATH" ] && [ "$VAULT_PATH" != "null" ]; then
             APP_NAME=$(echo "$VAULT_PATH" | awk -F'/' '{print $NF}')
             PROJECT_NAME=$(echo "$VAULT_PATH" | awk -F'/' '{print $(NF-1)}')
         else
@@ -133,9 +133,15 @@ destroy_state() {
             APP_NAME=$(echo "$NS_NAME" | cut -d'-' -f2-)
         fi
 
+        # Bulletproof fallback parsing directly from the S3 Key if the state variables are empty
+        if [ -z "$APP_NAME" ] || [ "$APP_NAME" == "null" ]; then
+            PROJECT_NAME=$(echo "$key" | awk -F'/' '{print $(NF-2)}')
+            APP_NAME=$(echo "$key" | awk -F'/' '{print $(NF-1)}')
+        fi
+
         # 2. Extract github_owner from repository URL
         GITHUB_OWNER=$(jq -r '.resources[] | select(.type == "github_repository" and .name == "app") | .instances[0].attributes.html_url // empty' /tmp/temp.tfstate | awk -F'/' '{print $4}')
-        if [ -z "$GITHUB_OWNER" ]; then
+        if [ -z "$GITHUB_OWNER" ] || [ "$GITHUB_OWNER" == "null" ]; then
             GITHUB_OWNER="3-Istor"
         fi
 
@@ -145,7 +151,7 @@ destroy_state() {
         # 4. Extract cloudflare_zone_id
         CLOUDFLARE_ZONE_ID=$(jq -r '.resources[] | select(.type == "cloudflare_dns_record" and .name == "app_cname") | .instances[0].attributes.zone_id // empty' /tmp/temp.tfstate)
 
-        # 5. Extract app_type dynamically (detects if components are fullstack or static)
+        # 5. Extract app_type dynamically
         IS_FULLSTACK=$(jq -r '[.resources[] | select(.type == "kubernetes_manifest" and .name == "argocd_application") | .instances[].index_key] | contains(["frontend"])' /tmp/temp.tfstate)
         if [ "$IS_FULLSTACK" == "true" ]; then
             APP_TYPE="fullstack"
@@ -153,24 +159,27 @@ destroy_state() {
             APP_TYPE="static"
         fi
 
-        # Export variables to environment so Terraform reads them automatically
+        # Export variables
         export TF_VAR_app_name="$APP_NAME"
         export TF_VAR_project_name="$PROJECT_NAME"
         export TF_VAR_github_owner="$GITHUB_OWNER"
-        export TF_VAR_template_repo_name="dummy" # Only required during creation
+        export TF_VAR_template_repo_name="dummy"
         export TF_VAR_cloudflare_account_id="$CLOUDFLARE_ACCOUNT_ID"
         export TF_VAR_cloudflare_zone_id="$CLOUDFLARE_ZONE_ID"
         export TF_VAR_app_type="$APP_TYPE"
 
         echo "----------------------------------------"
         echo "🔥 Destroying GitOps App: $APP_NAME (Project: $PROJECT_NAME) [Type: $APP_TYPE]"
-        echo "   -> Cloudflare Account: $CLOUDFLARE_ACCOUNT_ID"
-        echo "   -> Cloudflare Zone: $CLOUDFLARE_ZONE_ID"
 
     elif [ "$template_type" == "bootstrap" ]; then
-        # Extract project_name from keycloak group (handles names with multiple dashes)
+        # Extract project_name from keycloak group
         GROUP_NAME=$(jq -r '.resources[] | select(.type == "keycloak_group" and .name == "project_members") | .instances[0].attributes.name // empty' /tmp/temp.tfstate)
         PROJECT_NAME=$(echo "$GROUP_NAME" | sed 's/^project-//' | sed 's/-members$//')
+
+        # Fallback to S3 key if empty
+        if [ -z "$PROJECT_NAME" ] || [ "$PROJECT_NAME" == "null" ]; then
+            PROJECT_NAME=$(echo "$key" | awk -F'/' '{print $(NF-1)}')
+        fi
 
         export TF_VAR_project_name="$PROJECT_NAME"
 
@@ -189,7 +198,38 @@ destroy_state() {
         -backend-config="encrypt=true" > /dev/null
 
     if [ $? -eq 0 ]; then
-        terraform destroy -refresh=false -auto-approve -input=false
+        # 1. Strip kubernetes_manifest instances from the state to bypass plugin errors
+        for res in $(terraform state list 2>/dev/null | grep 'kubernetes_manifest' || true); do
+            echo "   -> Removing $res from state..."
+            terraform state rm "$res" >/dev/null
+        done
+
+        # 2. Temporarily scrub kubernetes_manifest blocks from the local .tf file
+        #    so the Provider doesn't try to validate the CRD with the API Server
+        if [ -f main.tf ]; then
+            cp main.tf main.tf.bak
+            awk '
+            BEGIN { skip=0; brace_count=0 }
+            /resource "kubernetes_manifest"/ { skip=1 }
+            skip==1 {
+                s = $0
+                open = gsub(/\{/, "{", s)
+                close = gsub(/\}/, "}", s)
+                brace_count += (open - close)
+                if (brace_count == 0) skip=0
+                next
+            }
+            { print $0 }
+            ' main.tf.bak > main.tf
+        fi
+
+        # 3. Destroy what is left WITH state refresh
+        terraform destroy -auto-approve -input=false
+
+        # 4. Safely restore the original .tf files so future executions remain completely untouched
+        if [ -f main.tf.bak ]; then
+            mv main.tf.bak main.tf
+        fi
     else
         echo "❌ Failed to initialize backend for: $key"
     fi
