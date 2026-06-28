@@ -285,6 +285,11 @@ resource "keycloak_user_roles" "tenant_admin_grants" {
   realm_id = keycloak_realm.tenant_realm.id
   user_id  = keycloak_user.tenant_admin.id
   role_ids = [data.keycloak_role.tenant_realm_admin_role.id]
+
+  depends_on = [
+    keycloak_user.tenant_admin,
+    data.keycloak_role.tenant_realm_admin_role
+  ]
 }
 
 # Store Tenant Realm Admin credentials in the Project's Vault path
