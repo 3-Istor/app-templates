@@ -351,13 +351,10 @@ resource "kubernetes_manifest" "argocd_image_updater" {
           ]
 
           writeBackConfig = {
-            method = "git:secret:argocd/private-repo-creds"
+            method = "git:secret:argocd/cnp-portal-github-creds"
             gitConfig = {
               branch          = "main"
               writeBackTarget = local.app_type == "fullstack" ? "helmvalues:/deploy/values-${each.value}.yaml" : "helmvalues:/deploy/values.yaml"
-              pullRequest = {
-                github = {}
-              }
             }
           }
         }
