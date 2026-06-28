@@ -334,18 +334,17 @@ resource "kubernetes_manifest" "argocd_image_updater" {
               alias     = "app-image"
               imageName = each.value == "app" ? lower("ghcr.io/${var.github_owner}/${var.app_name}") : lower("ghcr.io/${var.github_owner}/${var.app_name}/${each.value}")
 
-              pullSecret = "secret:argocd/${kubernetes_secret_v1.updater_registry.metadata[0].name}"
+              commonUpdateSettings = {
+                pullSecret     = "secret:argocd/${kubernetes_secret_v1.updater_registry.metadata[0].name}"
+                updateStrategy = "newest-build"
+                allowTags      = "regexp:^sha-[a-f0-9]+$"
+              }
 
               manifestTargets = {
                 helm = {
                   name = "image.repository"
                   tag  = "image.tag"
                 }
-              }
-
-              commonUpdateSettings = {
-                updateStrategy = "newest-build"
-                allowTags      = "regexp:^sha-[a-f0-9]+$"
               }
             }
           ]
