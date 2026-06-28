@@ -334,7 +334,7 @@ resource "kubernetes_manifest" "argocd_image_updater" {
               alias     = "app-image"
               imageName = each.value == "app" ? lower("ghcr.io/${var.github_owner}/${var.app_name}") : lower("ghcr.io/${var.github_owner}/${var.app_name}/${each.value}")
 
-              pullSecret = "secret:${var.project_name}-${var.app_name}/app-registry"
+              pullSecret = "secret:argocd/${kubernetes_secret_v1.updater_registry.metadata[0].name}"
 
               manifestTargets = {
                 helm = {
@@ -360,6 +360,26 @@ resource "kubernetes_manifest" "argocd_image_updater" {
         }
       ]
     }
+  }
+}
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ArgoCD Image Updater Authentication Secret
+# ═══════════════════════════════════════════════════════════════════════════
+resource "kubernetes_secret_v1" "updater_registry" {
+  metadata {
+    name      = "${var.project_name}-${var.app_name}-ghcr"
+    namespace = "argocd"
+    labels = {
+      "managed-by" = "cnp"
+    }
+  }
+
+  type = "Opaque"
+
+  data = {
+    username = var.github_registry_username
+    password = var.github_registry_token
   }
 }
 
