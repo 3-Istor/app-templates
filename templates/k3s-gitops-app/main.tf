@@ -335,7 +335,7 @@ resource "kubernetes_manifest" "argocd_image_updater" {
               imageName = each.value == "app" ? lower("ghcr.io/${var.github_owner}/${var.app_name}") : lower("ghcr.io/${var.github_owner}/${var.app_name}/${each.value}")
 
               commonUpdateSettings = {
-                pullSecret     = "secret:argocd/${kubernetes_secret_v1.updater_registry.metadata[0].name}"
+                pullSecret     = "pullsecret:argocd/${kubernetes_secret_v1.updater_registry.metadata[0].name}"
                 updateStrategy = "newest-build"
                 allowTags      = "regexp:^sha-[a-f0-9]+$"
               }
@@ -369,16 +369,20 @@ resource "kubernetes_secret_v1" "updater_registry" {
   metadata {
     name      = "${var.project_name}-${var.app_name}-ghcr"
     namespace = "argocd"
-    labels = {
-      "managed-by" = "cnp"
-    }
   }
 
-  type = "Opaque"
+  type = "kubernetes.io/dockerconfigjson"
 
   data = {
-    username = var.github_registry_username
-    password = var.github_registry_token
+    ".dockerconfigjson" = jsonencode({
+      auths = {
+        "ghcr.io" = {
+          username = var.github_registry_username
+          password = var.github_registry_token
+          auth     = base64encode("${var.github_registry_username}:${var.github_registry_token}")
+        }
+      }
+    })
   }
 }
 
