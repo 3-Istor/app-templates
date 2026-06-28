@@ -387,6 +387,8 @@ resource "github_repository_file" "argocd_project_app" {
     metadata:
       name: ${var.project_name}-bootstrap
       namespace: argocd
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
     spec:
       project: default
       source:
