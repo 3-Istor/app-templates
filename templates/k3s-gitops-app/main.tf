@@ -384,6 +384,11 @@ resource "kubernetes_secret_v1" "updater_registry" {
           username = var.github_registry_username
           password = var.github_registry_token
           auth     = base64encode("${var.github_registry_username}:${var.github_registry_token}")
+        },
+        "https://ghcr.io" = {
+          username = var.github_registry_username
+          password = var.github_registry_token
+          auth     = base64encode("${var.github_registry_username}:${var.github_registry_token}")
         }
       }
     })
