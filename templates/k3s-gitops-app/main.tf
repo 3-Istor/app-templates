@@ -309,9 +309,9 @@ resource "kubernetes_manifest" "argocd_application" {
   }
 }
 
-# ==============================================================================
+# ═══════════════════════════════════════════════════════════════════════════
 # 7. ARGOCD IMAGE UPDATER CONFIGURATION
-# ==============================================================================
+# ═══════════════════════════════════════════════════════════════════════════
 
 resource "kubernetes_manifest" "argocd_image_updater" {
   for_each   = toset(local.components)
@@ -334,7 +334,7 @@ resource "kubernetes_manifest" "argocd_image_updater" {
               alias     = "app-image"
               imageName = each.value == "app" ? lower("ghcr.io/${var.github_owner}/${var.app_name}") : lower("ghcr.io/${var.github_owner}/${var.app_name}/${each.value}")
 
-              pullSecret = "pullsecret:argocd/${kubernetes_secret_v1.updater_registry.metadata[0].name}"
+              pullSecret = "secret:argocd/${kubernetes_secret_v1.updater_registry.metadata[0].name}"
 
               manifestTargets = {
                 helm = {
@@ -375,23 +375,11 @@ resource "kubernetes_secret_v1" "updater_registry" {
     }
   }
 
-  type = "kubernetes.io/dockerconfigjson"
+  type = "Opaque"
 
   data = {
-    ".dockerconfigjson" = jsonencode({
-      auths = {
-        "ghcr.io" = {
-          username = var.github_registry_username
-          password = var.github_registry_token
-          auth     = base64encode("${var.github_registry_username}:${var.github_registry_token}")
-        },
-        "https://ghcr.io" = {
-          username = var.github_registry_username
-          password = var.github_registry_token
-          auth     = base64encode("${var.github_registry_username}:${var.github_registry_token}")
-        }
-      }
-    })
+    username = var.github_registry_username
+    password = var.github_registry_token
   }
 }
 
