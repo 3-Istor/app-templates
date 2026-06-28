@@ -354,6 +354,7 @@ resource "kubernetes_manifest" "argocd_image_updater" {
             gitConfig = {
               branch          = "main"
               writeBackTarget = local.app_type == "fullstack" ? "helmvalues:/deploy/values-${each.value}.yaml" : "helmvalues:/deploy/values.yaml"
+              repository      = github_repository.app.html_url
             }
           }
         }
