@@ -36,7 +36,6 @@ provider "vault" {
 }
 
 provider "kubernetes" {
-  config_path = "~/.kube/config" # Assuming local development, CMP will use cluster auth
 }
 
 provider "keycloak" {
