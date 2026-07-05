@@ -16,14 +16,9 @@ resource "grafana_data_source" "loki" {
   url         = "http://loki-gateway.observability.svc.cluster.local:80"
   access_mode = "proxy"
 
-  # Configure the HTTP header to enforce the Tenant ID
-  json_data_encoded = jsonencode({
-    httpHeaderName1 = "X-Scope-OrgID"
-  })
-
-  secure_json_data_encoded = jsonencode({
-    httpHeaderValue1 = var.project_name
-  })
+  http_headers = {
+    "X-Scope-OrgID" = var.project_name
+  }
 }
 
 # 3. Add the VictoriaMetrics Data Source (Isolated Metrics)
