@@ -69,3 +69,12 @@ variable "cloudflare_zone_id" {
   type        = string
   description = "The Cloudflare Zone ID of your domain (e.g., 3istor.com)"
 }
+
+# ==============================================================================
+# GRAFANA PROVIDER VARIABLES
+# ==============================================================================
+variable "grafana_admin_password" {
+  type        = string
+  sensitive   = true
+  description = "Admin password for Grafana"
+}

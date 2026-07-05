@@ -12,6 +12,11 @@ terraform {
       source  = "cloudflare/cloudflare"
       version = "5.19.1"
     }
+
+    grafana = {
+      source  = "grafana/grafana"
+      version = "~> 4.40.0"
+    }
   }
 
   backend "s3" {}
@@ -31,4 +36,9 @@ provider "vault" {
 
 provider "cloudflare" {
   api_token = var.cloudflare_api_token
+}
+
+provider "grafana" {
+  url  = "https://grafana.3istor.com"
+  auth = "admin:${var.grafana_admin_password}"
 }
