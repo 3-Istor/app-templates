@@ -28,7 +28,7 @@ resource "grafana_data_source" "victoriametrics" {
   name   = "Metrics - ${title(var.project_name)}"
 
   # VictoriaMetrics handles multi-tenancy directly through the URL path
-  url         = "http://vm-vmauth.observability.svc.cluster.local:8427/select/${var.project_name}/prometheus"
+  url         = "http://vm-victoria-metrics-cluster-vmauth.observability.svc.cluster.local:8427/select/${var.project_name}/prometheus"
   access_mode = "proxy"
   is_default  = true
 }
