@@ -1,0 +1,22 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":timezone(Europe/Paris)"
+  ],
+  "minimumReleaseAge": "14 days",
+  "terraform": {
+    "managerFilePatterns": [
+      "/.*\\.tf$/"
+    ]
+  },
+  "packageRules": [
+    {
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchDatasources": ["terraform-provider"],
+      "groupName": "Terraform Providers (Minor & Patch)"
+    }
+  ],
+  "schedule": ["before 5am on monday"],
+  "prConcurrentLimit": 5
+}
