@@ -43,6 +43,7 @@ db:
   enabled: true
   name: ${app_name}
   storage: "1Gi"
+  storageClass: "${storage_class}"
 
 monitoring:
   enabled: true

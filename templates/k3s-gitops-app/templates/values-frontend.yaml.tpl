@@ -39,7 +39,7 @@ routes:
 
 ingress:
   enabled: true
-  hostname: "${app_name}-${project_name}.3istor.com"
+  hostname: "${hostname}"
   sso_protected: true
   realm: "${project_name}"
 

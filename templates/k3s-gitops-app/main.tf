@@ -1,41 +1,56 @@
 locals {
   app_type   = var.template_repo_name == "template-app-webapp-python-fastapi-react" ? "fullstack" : "static"
   components = local.app_type == "fullstack" ? ["frontend", "backend"] : ["app"]
+
+  hostname = "${var.app_name}-${var.project_name}.${var.domain}"
+
+  # Everything that genuinely differs per provider on this path. It is a short
+  # list because the module no longer creates cloud resources — the per-capability
+  # split (network, compute, database, storage, exposure) lives in
+  # project-bootstrap, which is where cloud resources are actually created.
+  cloud_profile = {
+    onprem = { storage_class = "local-path" }
+    aws    = { storage_class = "gp3" }
+    gcp    = { storage_class = "standard-rwo" }
+  }
+  storage_class = local.cloud_profile[var.target_cloud].storage_class
+
+  # Uniform markers, per D-13. "Find everything belonging to project X on cloud
+  # Y" has to be a query rather than guesswork.
+  marker = "cnp.project=${var.project_name} cnp.cloud=${var.target_cloud} cnp.env=${var.environment}"
 }
 
 # ==============================================================================
 # 1. GITHUB PRIVATE REPOSITORY PROVISIONING
 # ==============================================================================
 
-# Create the private repository using the specified template
 resource "github_repository" "app" {
   name        = var.app_name
   description = "Provisioned by CNP for Project ${var.project_name}"
   visibility  = "private"
 
   template {
-    owner                = "3-Istor"
+    owner                = var.github_owner
     repository           = var.template_repo_name
     include_all_branches = false
   }
 }
 
-# Dynamically inject the backend values file if the app is a full-stack type
 resource "github_repository_file" "values_backend" {
   count      = local.app_type == "fullstack" ? 1 : 0
   repository = github_repository.app.name
   branch     = "main"
   file       = "deploy/values-backend.yaml"
   content = templatefile("${path.module}/templates/values-backend.yaml.tpl", {
-    github_owner = lower(var.github_owner)
-    app_name     = lower(var.app_name)
-    project_name = var.project_name
+    github_owner  = lower(var.github_owner)
+    app_name      = lower(var.app_name)
+    project_name  = var.project_name
+    storage_class = local.storage_class
   })
   commit_message      = "chore: bootstrap cnp backend variables [skip ci]"
   overwrite_on_create = true
 }
 
-# Dynamically inject the frontend/static values file
 resource "github_repository_file" "values_frontend" {
   repository = github_repository.app.name
   branch     = "main"
@@ -43,9 +58,11 @@ resource "github_repository_file" "values_frontend" {
   content = templatefile(
     local.app_type == "fullstack" ? "${path.module}/templates/values-frontend.yaml.tpl" : "${path.module}/templates/values-static.yaml.tpl",
     {
-      github_owner = lower(var.github_owner)
-      app_name     = lower(var.app_name)
-      project_name = var.project_name
+      github_owner  = lower(var.github_owner)
+      app_name      = lower(var.app_name)
+      project_name  = var.project_name
+      hostname      = local.hostname
+      storage_class = local.storage_class
     }
   )
   commit_message      = "chore: bootstrap cnp application variables [skip ci]"
@@ -53,12 +70,11 @@ resource "github_repository_file" "values_frontend" {
 }
 
 # ==============================================================================
-# 2. KEYCLOAK OIDC SSO CLIENT (With Project-Level Authorization)
+# 2. KEYCLOAK OIDC SSO CLIENT
 # ==============================================================================
 
-# Create the dedicated OIDC Client for this project's application
 resource "keycloak_openid_client" "app_client" {
-  realm_id                     = var.project_name
+  realm_id                     = var.keycloak_realm_id != "" ? var.keycloak_realm_id : var.project_name
   client_id                    = "cnp-${var.project_name}-${var.app_name}"
   name                         = "SSO Client for ${var.app_name}"
   enabled                      = true
@@ -67,328 +83,114 @@ resource "keycloak_openid_client" "app_client" {
   direct_access_grants_enabled = false
 
   valid_redirect_uris = [
-    "https://${var.app_name}-${var.project_name}.3istor.com/oauth2/callback"
+    "https://${local.hostname}/oauth2/callback"
   ]
 
   valid_post_logout_redirect_uris = [
-    "https://${var.app_name}-${var.project_name}.3istor.com/"
+    "https://${local.hostname}/"
   ]
 }
 
 # ==============================================================================
-# 3. SECRETS & VAULT CONFIGURATION
+# 3. SECRETS — everything Kubernetes needs, delivered through Vault
 # ==============================================================================
 
-# Generate a secure random password for the application database
 resource "random_password" "db_password" {
   length  = 24
   special = false
 }
 
-# Write application secrets AND the Keycloak Client Secret to Vault's subfolder!
-# This allows Envoy Gateway (via VSO) to authenticate users for this app
+# Application secrets and the Keycloak client secret. One value, one writer: the
+# secrets operator syncs it into the namespace, keycloak-config-cli creates the
+# client with that exact secret, and Envoy's SecurityPolicy reads the same
+# Kubernetes Secret.
 resource "vault_kv_secret_v2" "app_secrets" {
   mount               = "project-${var.project_name}"
   name                = var.app_name
   delete_all_versions = true
+
+  custom_metadata {
+    data = {
+      "cnp.project" = var.project_name
+      "cnp.cloud"   = var.target_cloud
+      "cnp.env"     = var.environment
+    }
+  }
+
   data_json = jsonencode({
-    username      = "app" #pour cnpg
+    username      = "app"
     password      = random_password.db_password.result
-    client-secret = keycloak_openid_client.app_client.client_secret # Injected for Envoy Gateway OIDC
+    client-secret = keycloak_openid_client.app_client.client_secret
   })
 }
 
-# CREATE THE VAULT KUBERNETES ROLE (This resolves the VSO bug!)
-# This binds strictly to the vault-secrets-operator ServiceAccount within the target namespace context
-resource "vault_kubernetes_auth_backend_role" "vso_role" {
-  backend                          = "kubernetes"
+# The GHCR pull secret. Used to be written straight into the app namespace's
+# etcd as a dockerconfigjson Secret; it now goes to Vault and the secrets
+# operator materialises it on whichever cluster the app lands on.
+resource "vault_kv_secret_v2" "app_registry" {
+  mount               = "project-${var.project_name}"
+  name                = "${var.app_name}/registry"
+  delete_all_versions = true
+
+  data_json = jsonencode({
+    ".dockerconfigjson" = jsonencode({
+      auths = {
+        # containerd on K3s wants the full-URL key as well as the bare host.
+        for host in ["ghcr.io", "https://ghcr.io"] : host => {
+          username = var.github_registry_username
+          password = var.github_registry_token
+          auth     = base64encode("${var.github_registry_username}:${var.github_registry_token}")
+        }
+      }
+    })
+  })
+}
+
+# Vault auth role for this app's secrets.
+#
+# One Kubernetes auth mount per cluster (D-07): a single mount is configured for
+# the on-prem API server's token issuer and CA, and a second cluster's service
+# account tokens will not validate against it.
+resource "vault_kubernetes_auth_backend_role" "app_role" {
+  backend                          = "kubernetes-${var.target_cloud}"
   role_name                        = "${var.project_name}-${var.app_name}-role"
   bound_service_account_names      = ["vault-secrets-operator"]
   bound_service_account_namespaces = ["vault-secrets-operator"]
   token_ttl                        = 86400
-  token_policies                   = ["project-${var.project_name}-dev-policy"] # Bound to the parent project policy
+  token_policies                   = ["project-${var.project_name}-dev-policy"]
 }
 
 # ==============================================================================
-# 4. KUBERNETES TARGET NAMESPACE & REGISTRY AUTHENTICATION (Day-0 Bootstrap)
+# 4. PUBLIC HOSTNAME
 # ==============================================================================
 
-# Explicitly create the namespace to bootstrap secrets before pods are deployed
-resource "kubernetes_namespace_v1" "app_ns" {
-  metadata {
-    name = "${var.project_name}-${var.app_name}"
-    labels = {
-      prod-gateway-access = "true"
-    }
-  }
-}
-
-# Generate the app-registry secret dynamically using the Classic packages pull PAT (K3s/Containerd compliant)
-resource "kubernetes_secret_v1" "app_registry" {
-  metadata {
-    name      = "app-registry"
-    namespace = kubernetes_namespace_v1.app_ns.metadata[0].name
-  }
-
-  type = "kubernetes.io/dockerconfigjson"
-
-  data = {
-    # Let the provider handle the outer Base64 encoding automatically
-    ".dockerconfigjson" = jsonencode({
-      auths = {
-        # 1. Standard key
-        "ghcr.io" = {
-          username = var.github_registry_username
-          password = var.github_registry_token
-          auth     = base64encode("${var.github_registry_username}:${var.github_registry_token}")
-        },
-        # 2. Full URL key (often required by containerd/K3s)
-        "https://ghcr.io" = {
-          username = var.github_registry_username
-          password = var.github_registry_token
-          auth     = base64encode("${var.github_registry_username}:${var.github_registry_token}")
-        }
-      }
-    })
-  }
-}
-
-# ==============================================================================
-# 5. DEDICATED CLOUDFLARE MICRO-TUNNEL (Fully Automated Day-0)
-# ==============================================================================
-
-# Generate a random password for the dedicated tunnel secret
-resource "random_password" "tunnel_secret" {
-  length  = 64
-  special = false
-}
-
-# Create a dedicated Cloudflare Tunnel for this specific application
-resource "cloudflare_zero_trust_tunnel_cloudflared" "app_tunnel" {
-  account_id    = var.cloudflare_account_id
-  name          = "cnp-${var.project_name}-${var.app_name}-tunnel"
-  config_src    = "cloudflare"
-  tunnel_secret = base64encode(random_password.tunnel_secret.result)
-}
-
-resource "cloudflare_zero_trust_tunnel_cloudflared_config" "app_tunnel_config" {
+# The project owns one tunnel and one connector (D-06); an application adds a
+# hostname to it rather than standing up a tunnel of its own. A project with two
+# apps used to run at least two connectors and rely on a third, shared one.
+#
+# The connector's routing table is Git state, rendered by cnp-project-base from
+# the project's registry record — which is why nothing here writes an ingress
+# rule to the Cloudflare API.
+data "cloudflare_zero_trust_tunnel_cloudflared" "project_tunnel" {
   account_id = var.cloudflare_account_id
-  tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.app_tunnel.id
 
-  config = {
-    ingress = [
-      {
-        hostname = "${var.app_name}-${var.project_name}.3istor.com"
-        service  = "http://envoy-gateway-infra-shared-gateway-ac1e5388.envoy-gateway-system.svc.cluster.local:80"
-      },
-      {
-        service = "http_status:404"
-      }
-    ]
+  filter = {
+    name = "cnp-${var.project_name}-tunnel"
   }
 }
 
-# Create the explicit, secure DNS CNAME record pointing to the dedicated tunnel
 resource "cloudflare_dns_record" "app_cname" {
   zone_id = var.cloudflare_zone_id
   name    = "${var.app_name}-${var.project_name}"
-  content = "${cloudflare_zero_trust_tunnel_cloudflared.app_tunnel.id}.cfargotunnel.com"
+  content = "${data.cloudflare_zero_trust_tunnel_cloudflared.project_tunnel.id}.cfargotunnel.com"
   type    = "CNAME"
   proxied = true
   ttl     = 1
-}
-
-# Write the Tunnel Token into a Kubernetes Secret inside the application namespace
-resource "kubernetes_secret_v1" "tunnel_token" {
-  metadata {
-    name      = "cloudflare-tunnel-token"
-    namespace = kubernetes_namespace_v1.app_ns.metadata[0].name
-  }
-
-  type = "Opaque"
-
-  data = {
-    token = base64encode(jsonencode({
-      a = var.cloudflare_account_id
-      t = cloudflare_zero_trust_tunnel_cloudflared.app_tunnel.id
-      s = base64encode(random_password.tunnel_secret.result)
-    }))
-  }
-}
-
-resource "time_sleep" "wait_for_tunnel_disconnect" {
-  depends_on = [
-    cloudflare_zero_trust_tunnel_cloudflared.app_tunnel,
-    cloudflare_zero_trust_tunnel_cloudflared_config.app_tunnel_config
-  ]
-
-  create_duration  = "0s"
-  destroy_duration = "45s"
+  comment = local.marker
 }
 
 # ==============================================================================
-# 6. ARGOCD DELIVERY (GITOPS APPLICATIONS)
-# ==============================================================================
-
-
-resource "kubernetes_manifest" "argocd_application" {
-  for_each   = toset(local.components)
-  depends_on = [time_sleep.wait_for_tunnel_disconnect]
-
-  manifest = {
-    apiVersion = "argoproj.io/v1alpha1"
-    kind       = "Application"
-    metadata = {
-      name      = "${var.project_name}-${var.app_name}-${each.value}"
-      namespace = "argocd"
-      annotations = {
-        # Required for Kyverno compliance and to prevent sync-loops with mutating webhooks
-        "argocd.argoproj.io/compare-options" = "ServerSideDiff=true,IncludeMutationWebhook=true"
-      }
-      finalizers = [
-        "resources-finalizer.argocd.argoproj.io"
-      ]
-    }
-    spec = {
-      project = var.project_name
-
-      # Combined Sources: Central Helm Chart + Developer's custom values.yaml
-      sources = [
-        {
-          # Source 1: The shared, generic Helm Chart
-          repoURL        = "https://github.com/3-Istor/infra-templates.git"
-          targetRevision = "HEAD"
-          path           = "." # Root of infra-templates containing Chart.yaml
-          ref            = ""
-          helm = {
-            valueFiles = [
-              local.app_type == "fullstack" ? "$values/deploy/values-${each.value}.yaml" : "$values/deploy/values.yaml"
-            ]
-          }
-        },
-        {
-          # Source 2: The developer's repository (private code + deploy/values.yaml)
-          repoURL        = github_repository.app.html_url
-          targetRevision = "HEAD"
-          path           = ""
-          ref            = "values"
-          helm = {
-            valueFiles = []
-          }
-        }
-      ]
-
-      destination = {
-        server    = "https://kubernetes.default.svc"
-        namespace = kubernetes_namespace_v1.app_ns.metadata[0].name
-      }
-      syncPolicy = {
-        automated = {
-          prune    = true
-          selfHeal = true
-        }
-        syncOptions = [
-          "ServerSideApply=true",
-          "RespectIgnoreDifferences=true"
-        ]
-      }
-      ignoreDifferences = [
-        {
-          group = "apps"
-          kind  = "Deployment"
-          jsonPointers = [
-            "/spec/replicas"
-          ]
-        }
-      ]
-    }
-  }
-
-  field_manager {
-    force_conflicts = true
-  }
-}
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 7. ARGOCD IMAGE UPDATER CONFIGURATION
-# ═══════════════════════════════════════════════════════════════════════════
-
-resource "kubernetes_manifest" "argocd_image_updater" {
-  for_each   = toset(local.components)
-  depends_on = [time_sleep.wait_for_tunnel_disconnect]
-
-  manifest = {
-    apiVersion = "argocd-image-updater.argoproj.io/v1alpha1"
-    kind       = "ImageUpdater"
-    metadata = {
-      name      = "${var.project_name}-${var.app_name}-${each.value}-updater"
-      namespace = "argocd"
-    }
-    spec = {
-      applicationRefs = [
-        {
-          namePattern = "${var.project_name}-${var.app_name}-${each.value}"
-
-          images = [
-            {
-              alias     = "app-image"
-              imageName = each.value == "app" ? lower("ghcr.io/${var.github_owner}/${var.app_name}") : lower("ghcr.io/${var.github_owner}/${var.app_name}/${each.value}")
-
-              commonUpdateSettings = {
-                pullSecret     = "pullsecret:argocd/${kubernetes_secret_v1.updater_registry.metadata[0].name}"
-                updateStrategy = "newest-build"
-                allowTags      = "regexp:^sha-[a-f0-9]+$"
-              }
-
-              manifestTargets = {
-                helm = {
-                  name = "image.repository"
-                  tag  = "image.tag"
-                }
-              }
-            }
-          ]
-
-          writeBackConfig = {
-            method = "git:secret:argocd/cnp-portal-github-creds"
-            gitConfig = {
-              branch          = "main"
-              writeBackTarget = local.app_type == "fullstack" ? "helmvalues:/deploy/values-${each.value}.yaml" : "helmvalues:/deploy/values.yaml"
-              repository      = github_repository.app.html_url
-            }
-          }
-        }
-      ]
-    }
-  }
-}
-
-# ═══════════════════════════════════════════════════════════════════════════
-# ArgoCD Image Updater Authentication Secret
-# ═══════════════════════════════════════════════════════════════════════════
-resource "kubernetes_secret_v1" "updater_registry" {
-  metadata {
-    name      = "${var.project_name}-${var.app_name}-ghcr"
-    namespace = "argocd"
-  }
-
-  type = "kubernetes.io/dockerconfigjson"
-
-  data = {
-    ".dockerconfigjson" = jsonencode({
-      auths = {
-        "ghcr.io" = {
-          username = var.github_registry_username
-          password = var.github_registry_token
-          auth     = base64encode("${var.github_registry_username}:${var.github_registry_token}")
-        }
-      }
-    })
-  }
-}
-
-# ==============================================================================
-# 8. CLEANUP: GHCR PACKAGES DELETION (On Destroy)
+# 5. CLEANUP: GHCR PACKAGES DELETION (On Destroy)
 # ==============================================================================
 
 resource "null_resource" "delete_ghcr_packages" {
@@ -403,26 +205,26 @@ resource "null_resource" "delete_ghcr_packages" {
     when    = destroy
     command = <<EOT
       #!/bin/bash
+      set -uo pipefail
 
       TOKEN="${self.triggers.github_token}"
 
       if [ -z "$TOKEN" ] || [ "$TOKEN" = "null" ]; then
-        echo "⚠️ GitHub Classic PAT token is missing from state. Cannot delete GHCR packages."
+        echo "GitHub Classic PAT token is missing from state. Cannot delete GHCR packages."
         exit 0
       fi
 
-      # Preserve exact case for the organization owner, force lowercase for the package name
       OWNER="${self.triggers.github_owner}"
       APP_NAME=$(echo "${self.triggers.app_name}" | tr '[:upper:]' '[:lower:]')
 
       delete_package() {
-        local pkg_name=$1
-        local encoded_pkg=$(echo "$pkg_name" | sed 's/\//%2F/g')
+        local encoded_pkg
+        encoded_pkg=$(echo "$1" | sed 's/\//%2F/g')
 
-        RESPONSE=$(curl -s -w "\nHTTP_STATUS:%%{http_code}" -X DELETE \
+        curl -s -o /dev/null -w "%%{http_code} $1\n" -X DELETE \
           -H "Accept: application/vnd.github.v3+json" \
           -H "Authorization: Bearer $TOKEN" \
-          "https://api.github.com/orgs/$OWNER/packages/container/$encoded_pkg")
+          "https://api.github.com/orgs/$OWNER/packages/container/$encoded_pkg"
       }
 
       if [ "${self.triggers.app_type}" = "fullstack" ]; then

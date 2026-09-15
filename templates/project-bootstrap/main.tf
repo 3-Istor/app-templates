@@ -22,7 +22,7 @@ resource "vault_mount" "project_kv" {
   path        = "project-${var.project_name}"
   type        = "kv"
   options     = { version = "2" }
-  description = "Isolated secrets engine for project ${var.project_name}"
+  description = "Isolated secrets engine for project ${var.project_name} on ${var.target_cloud}"
 }
 
 resource "vault_policy" "project_developers" {
@@ -357,7 +357,7 @@ EOT
 }
 
 resource "vault_kubernetes_auth_backend_role" "project_system_role" {
-  backend                          = "kubernetes"
+  backend                          = "kubernetes-${var.target_cloud}"
   role_name                        = "project-${var.project_name}-system-role"
   bound_service_account_names      = ["vault-secrets-operator"]
   bound_service_account_namespaces = ["vault-secrets-operator"]
@@ -366,75 +366,77 @@ resource "vault_kubernetes_auth_backend_role" "project_system_role" {
 }
 
 # ==============================================================================
-# Base helm chart
+# PROJECT INGRESS — one tunnel per project (D-06)
 # ==============================================================================
 
-provider "github" {
-  token = var.github_token
-  owner = "3-Istor"
+# Previously: the project's status- and offhours- hostnames pointed at a shared
+# account-wide tunnel named 3istor-cloud-tunnel, while each application created
+# a tunnel of its own. Three regimes, none of them per project.
+#
+# Now the project owns exactly one tunnel. Applications add hostnames to it.
+# Its routing table is not configured here: it is rendered from the project's
+# registry record by cnp-project-base and delivered by Argo CD, so adding a
+# route to a running project no longer requires the on-prem runner.
+resource "random_password" "tunnel_secret" {
+  length  = 64
+  special = false
 }
 
-resource "github_repository_file" "argocd_project_app" {
-  repository          = "cnp-projects"
-  branch              = "main"
-  file                = "projects/${var.project_name}.yaml"
-  commit_message      = "feat: Bootstrap project ${var.project_name} [skip ci]"
-  overwrite_on_create = true
-
-  content = <<-EOT
-    apiVersion: argoproj.io/v1alpha1
-    kind: Application
-    metadata:
-      name: ${var.project_name}-bootstrap
-      namespace: argocd
-      finalizers:
-        - resources-finalizer.argocd.argoproj.io
-    spec:
-      project: default
-      source:
-        repoURL: https://github.com/3-Istor/cnp-project-base.git
-        targetRevision: HEAD
-        path: .
-        helm:
-          values: |
-            projectName: "${var.project_name}"
-            features:
-              gatus: true
-      destination:
-        server: https://kubernetes.default.svc
-        namespace: ${var.project_name}-system
-      syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
-        syncOptions:
-          - CreateNamespace=true
-          - ServerSideApply=true
-  EOT
+resource "cloudflare_zero_trust_tunnel_cloudflared" "project_tunnel" {
+  account_id    = var.cloudflare_account_id
+  name          = "cnp-${var.project_name}-tunnel"
+  config_src    = "local"
+  tunnel_secret = base64encode(random_password.tunnel_secret.result)
 }
 
-data "cloudflare_zero_trust_tunnel_cloudflared" "base_tunnel" {
-  account_id = var.cloudflare_account_id
+# The connector reads this from a Kubernetes Secret the operator syncs. It used
+# to be written straight into etcd by the application module (D-02).
+resource "vault_kv_secret_v2" "project_tunnel_token" {
+  mount               = vault_mount.project_kv.path
+  name                = "system/tunnel"
+  delete_all_versions = true
+  data_json = jsonencode({
+    token = base64encode(jsonencode({
+      a = var.cloudflare_account_id
+      t = cloudflare_zero_trust_tunnel_cloudflared.project_tunnel.id
+      s = base64encode(random_password.tunnel_secret.result)
+    }))
+  })
+}
 
-  filter = {
-    name = "3istor-cloud-tunnel"
-  }
+locals {
+  tunnel_cname = "${cloudflare_zero_trust_tunnel_cloudflared.project_tunnel.id}.cfargotunnel.com"
+  marker       = "cnp.project=${var.project_name} cnp.cloud=${var.target_cloud}"
 }
 
 resource "cloudflare_dns_record" "project_status_dns" {
   zone_id = var.cloudflare_zone_id
   name    = "status-${var.project_name}"
-  content = "${data.cloudflare_zero_trust_tunnel_cloudflared.base_tunnel.id}.cfargotunnel.com"
+  content = local.tunnel_cname
   type    = "CNAME"
   proxied = true
   ttl     = 1
+  comment = local.marker
 }
 
 resource "cloudflare_dns_record" "project_offhours_dns" {
   zone_id = var.cloudflare_zone_id
   name    = "offhours-${var.project_name}"
-  content = "${data.cloudflare_zero_trust_tunnel_cloudflared.base_tunnel.id}.cfargotunnel.com"
+  content = local.tunnel_cname
   type    = "CNAME"
   proxied = true
   ttl     = 1
+  comment = local.marker
 }
+
+# ==============================================================================
+# Note on the project's Argo CD objects
+# ==============================================================================
+#
+# This module used to write cnp-projects/projects/<name>.yaml — a hand-rolled
+# Argo CD Application pinned to https://kubernetes.default.svc.
+#
+# It no longer does. CMP writes the project's record to
+# cnp-projects/registry/projects/<name>.yaml (D-01) and the ApplicationSet in
+# K3s generates the Applications from it, addressing the cluster by name (D-03).
+# Two writers of the same concept is how a registry and reality drift apart.
