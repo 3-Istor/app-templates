@@ -116,7 +116,7 @@ parse_args() {
 
 require_tools() {
   local missing=()
-  for tool in aws curl jq terraform gh; do
+  for tool in aws curl jq terraform gh kubectl; do
     command -v "$tool" >/dev/null 2>&1 || missing+=("$tool")
   done
   [ ${#missing[@]} -eq 0 ] || die "missing required tools: ${missing[*]}"
@@ -234,6 +234,22 @@ inventory_project() {
     log "     (no mount project-$project)"
   fi
 
+  log "   argocd:"
+  local argocd_found=0
+  if kubectl get appproject "$project" -n argocd >/dev/null 2>&1; then
+    log "     AppProject/$project"
+    argocd_found=$((argocd_found + 1))
+  fi
+  local app_count
+  app_count=$(kubectl get applications -n argocd -l "cnp.3istor.com/project=$project" \
+    --no-headers 2>/dev/null | wc -l)
+  if [ "$app_count" -gt 0 ]; then
+    log "     $app_count Application(s) still present"
+    argocd_found=$((argocd_found + app_count))
+  fi
+  [ "$argocd_found" -gt 0 ] || log "     (none)"
+  found=$((found + argocd_found))
+
   return "$found"
 }
 
@@ -328,6 +344,50 @@ clean_project() {
       -var="target_cloud=$cloud"
   else
     log "   (no bootstrap state)"
+  fi
+
+  log "   -- removing the orphaned AppProject"
+  remove_orphaned_appproject "$project"
+}
+
+# Deregistering a project (above) deletes its <project>-appproject Application,
+# but not the AppProject object itself: cnp-project-appprojects runs with
+# preserveResourcesOnDeletion: true specifically so the AppProject survives
+# long enough for the project's other Applications to finish their own
+# deletion — each of them needs "get app project <name>" to succeed to clear
+# their resources-finalizer, and if the AppProject is gone first they hang in
+# Terminating permanently (found live, K3s#52).
+#
+# That makes this step's ordering non-optional: wait for the project's
+# Applications to actually disappear before deleting the AppProject by hand,
+# or this reintroduces the exact deadlock the preserveResourcesOnDeletion
+# setting exists to avoid.
+remove_orphaned_appproject() {
+  local project="$1"
+
+  if [ "$CONFIRMED" != true ]; then
+    log "     would wait for Applications to clear, then: kubectl delete appproject $project -n argocd"
+    return 0
+  fi
+
+  local waited=0 remaining
+  while [ "$waited" -lt 300 ]; do
+    remaining=$(kubectl get applications -n argocd \
+      -l "cnp.3istor.com/project=$project" --no-headers 2>/dev/null | wc -l)
+    [ "$remaining" -eq 0 ] && break
+    sleep 10
+    waited=$((waited + 10))
+  done
+
+  if [ "$remaining" -gt 0 ]; then
+    warn "$remaining Application(s) for '$project' still present after ${waited}s — leaving its AppProject in place rather than risk the deadlock. Re-run cnp-clean for this project once they clear."
+    return 0
+  fi
+
+  if kubectl get appproject "$project" -n argocd >/dev/null 2>&1; then
+    kubectl delete appproject "$project" -n argocd
+  else
+    log "     no AppProject left to remove"
   fi
 }
 
