@@ -2,15 +2,18 @@
   "enabled": true,
   "id": "k3s-gitops-app",
   "name": "Kubernetes App (GitOps)",
-  "description": "Deploys a containerized application on K3s via ArgoCD.",
-  "icon": "🚀",
+  "description": "Deploys a containerized application through Argo CD onto the cluster its project targets \u2014 on-prem, AWS or GCP.",
+  "icon": "\ud83d\ude80",
   "category": "paas",
   "variables": [
     {
       "name": "template_repo_name",
       "label": "Stack Type (Git Template)",
       "type": "select",
-      "options": ["template-html-css", "template-app-webapp-python-fastapi-react"],
+      "options": [
+        "template-html-css",
+        "template-app-webapp-python-fastapi-react"
+      ],
       "required": true
     },
     {

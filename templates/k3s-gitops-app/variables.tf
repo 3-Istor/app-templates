@@ -32,14 +32,48 @@ variable "project_name" {
   description = "The name of the associated CNP Project (e.g., sandbox, production)"
 }
 
+variable "target_cloud" {
+  type        = string
+  description = "The cloud the project runs on. Comes from the project's registry record and selects the Vault auth mount, the storage class, and the state key prefix."
+  default     = "onprem"
+
+  validation {
+    condition     = contains(["onprem", "aws", "gcp"], var.target_cloud)
+    error_message = "target_cloud must be one of: onprem, aws, gcp. It must also match the name of a registered Argo CD cluster."
+  }
+}
+
+variable "environment" {
+  type        = string
+  description = "Deployment environment. The Prod/Staging seam from D-11 — carried so lighting it up later is not a migration, but every app written today is prod."
+  default     = "prod"
+
+  validation {
+    condition     = contains(["prod", "staging"], var.environment)
+    error_message = "environment must be one of: prod, staging."
+  }
+}
+
+variable "domain" {
+  type        = string
+  description = "Public DNS zone applications are exposed under"
+  default     = "3istor.com"
+}
+
 # ==============================================================================
 # KEYCLOAK PROVIDER VARIABLES
 # ==============================================================================
 
 variable "keycloak_realm" {
   type        = string
-  description = "The target Keycloak Realm"
+  description = "The platform Keycloak Realm"
   default     = "3istor"
+}
+
+variable "keycloak_realm_id" {
+  type        = string
+  description = "Realm the application's OIDC client is created in. Empty means the project's own realm, which is the current behaviour. Set explicitly once the project runs its own Keycloak IAMaaS (D-04)."
+  default     = ""
 }
 
 variable "keycloak_url" {

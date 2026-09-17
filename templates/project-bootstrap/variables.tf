@@ -3,6 +3,23 @@ variable "project_name" {
   description = "The name of the project (e.g., sandbox, alpha-team)"
 }
 
+variable "target_cloud" {
+  type        = string
+  description = "The cloud this project runs on. Selects the Vault auth mount and the state key prefix; the placement itself is expressed in the project's registry record."
+  default     = "onprem"
+
+  validation {
+    condition     = contains(["onprem", "aws", "gcp"], var.target_cloud)
+    error_message = "target_cloud must be one of: onprem, aws, gcp. It must also match the name of a registered Argo CD cluster."
+  }
+}
+
+variable "domain" {
+  type        = string
+  description = "Public DNS zone the project's hostnames live under"
+  default     = "3istor.com"
+}
+
 variable "project_description" {
   type        = string
   description = "A human-readable description of the project"
@@ -37,12 +54,6 @@ variable "vault_url" {
 variable "vault_token" {
   type      = string
   sensitive = true
-}
-
-variable "github_token" {
-  type        = string
-  sensitive   = true
-  description = "GitHub Classic PAT or Installation Token used to write to the cnp-projects repository"
 }
 
 variable "discord_webhook_url" {
