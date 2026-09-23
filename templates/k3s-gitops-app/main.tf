@@ -152,7 +152,14 @@ resource "vault_kv_secret_v2" "app_registry" {
 # the on-prem API server's token issuer and CA, and a second cluster's service
 # account tokens will not validate against it.
 resource "vault_kubernetes_auth_backend_role" "app_role" {
-  backend                          = "kubernetes-${var.target_cloud}"
+  # D-07 is about the mount, not the name: one mount per cluster, because a
+  # mount is tied to one API server's token issuer/CA. Today there is one
+  # cluster (on-prem), so its vault-secrets-operator has one fixed
+  # VAULT_KUBERNETES_PATH (auth/kubernetes) — the role has to live there, not
+  # under a cloud-suffixed mount nothing authenticates against. Naming the
+  # mount per-cloud only becomes correct once a second cluster (and its own
+  # operator instance) actually exists.
+  backend                          = "kubernetes"
   role_name                        = "${var.project_name}-${var.app_name}-role"
   bound_service_account_names      = ["vault-secrets-operator"]
   bound_service_account_namespaces = ["vault-secrets-operator"]
