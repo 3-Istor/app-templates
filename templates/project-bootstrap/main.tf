@@ -357,7 +357,13 @@ EOT
 }
 
 resource "vault_kubernetes_auth_backend_role" "project_system_role" {
-  backend                          = "kubernetes-${var.target_cloud}"
+  # Every cluster's vault-secrets-operator authenticates against a single,
+  # fixed mount ("auth/kubernetes") set once at operator startup, so the role
+  # itself has to live under that same mount regardless of target_cloud — a
+  # per-cloud mount only makes sense once each cloud runs its own cluster
+  # (and thus its own operator instance with its own VAULT_KUBERNETES_PATH).
+  # Revisit when an AWS/GCP cluster actually exists.
+  backend                          = "kubernetes"
   role_name                        = "project-${var.project_name}-system-role"
   bound_service_account_names      = ["vault-secrets-operator"]
   bound_service_account_namespaces = ["vault-secrets-operator"]
