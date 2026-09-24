@@ -395,6 +395,26 @@ resource "cloudflare_zero_trust_tunnel_cloudflared" "project_tunnel" {
   tunnel_secret = base64encode(random_password.tunnel_secret.result)
 }
 
+# Cloudflare refuses to delete a tunnel with an active connection, and the
+# cloudflared connector's lifecycle isn't in this graph to depend on directly
+# — it's an ArgoCD-managed Deployment now (D-02), stopped asynchronously by
+# removing the project's registry record, not by this destroy. Without some
+# delay here, `terraform destroy` reaches this resource before the connector
+# has actually disconnected and the tunnel is silently left orphaned.
+#
+# This used to be handled by a time_sleep the same way, gating a
+# kubernetes_manifest Terraform wrote directly (see k3s-gitops-app's history
+# pre-D-02) — it was dropped as dead weight when that manifest went away,
+# without noticing the connector-disconnect problem it solved was still real
+# for this project-level tunnel. Confirmed live: an orphaned "down" tunnel
+# with no depends_on gate, after a project delete with an active connector.
+resource "time_sleep" "wait_for_tunnel_disconnect" {
+  depends_on = [cloudflare_zero_trust_tunnel_cloudflared.project_tunnel]
+
+  create_duration  = "0s"
+  destroy_duration = "45s"
+}
+
 # The connector reads this from a Kubernetes Secret the operator syncs. It used
 # to be written straight into etcd by the application module (D-02).
 resource "vault_kv_secret_v2" "project_tunnel_token" {
