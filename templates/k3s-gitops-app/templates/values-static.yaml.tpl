@@ -38,10 +38,15 @@ ingress:
   hostname: "${hostname}"
   sso_protected: true
   realm: "${project_name}"
-  # Every project gets its own connector in <project>-system now (D-06) —
-  # an app-level connector would be a second, redundant one.
+  # Every project gets its own connector and Gateway in <project>-system now
+  # (D-06) — an app-level connector would be a second, redundant one, and the
+  # shared Gateway's listeners don't allow routes from a project that now
+  # owns its own Gateway.
   tunnel:
     perRelease: false
+  gateway:
+    name: "${project_name}-gateway"
+    namespace: "${project_name}-system"
 
 auth:
   realm: "${project_name}"
