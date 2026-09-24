@@ -17,6 +17,10 @@ terraform {
       source  = "grafana/grafana"
       version = "~> 4.40.0"
     }
+
+    time = {
+      source = "hashicorp/time"
+    }
   }
 
   backend "s3" {}
