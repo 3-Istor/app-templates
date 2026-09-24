@@ -38,6 +38,10 @@ ingress:
   hostname: "${hostname}"
   sso_protected: true
   realm: "${project_name}"
+  # Every project gets its own connector in <project>-system now (D-06) —
+  # an app-level connector would be a second, redundant one.
+  tunnel:
+    perRelease: false
 
 auth:
   realm: "${project_name}"
