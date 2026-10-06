@@ -415,6 +415,62 @@ resource "time_sleep" "wait_for_tunnel_disconnect" {
   destroy_duration = "45s"
 }
 
+# A fixed delay is not enough: the connector only stops once ArgoCD notices the
+# registry record is gone, which depends on its sync cycle (confirmed live: 45s
+# was not enough, Cloudflare answered 1022 "tunnel has active connections").
+# So wait for Cloudflare itself to report no connection. After the timeout the
+# destroy goes on and Cloudflare's own error surfaces, which a retry fixes.
+#
+# time_sleep above stays: projects bootstrapped before this resource existed
+# still have it in their state, and removing its provider would break their
+# destroy.
+#
+# CLOUDFLARE_API_TOKEN comes from the environment of the Terraform process: a
+# destroy-time provisioner can only read `self`, and the token must not be
+# written to state.
+resource "terraform_data" "wait_for_tunnel_connections_closed" {
+  depends_on = [cloudflare_zero_trust_tunnel_cloudflared.project_tunnel]
+
+  input = {
+    account_id = var.cloudflare_account_id
+    tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.project_tunnel.id
+  }
+
+  provisioner "local-exec" {
+    when        = destroy
+    interpreter = ["python3", "-c"]
+    environment = {
+      ACCOUNT_ID = self.input.account_id
+      TUNNEL_ID  = self.input.tunnel_id
+    }
+    command = <<-PYTHON
+      import json, os, sys, time, urllib.request
+
+      url = "https://api.cloudflare.com/client/v4/accounts/%s/cfd_tunnel/%s/connections" % (
+          os.environ["ACCOUNT_ID"], os.environ["TUNNEL_ID"])
+      headers = {"Authorization": "Bearer " + os.environ["CLOUDFLARE_API_TOKEN"]}
+      deadline = time.time() + 600
+
+      while True:
+          try:
+              request = urllib.request.Request(url, headers=headers)
+              connectors = json.load(urllib.request.urlopen(request, timeout=20))["result"]
+              active = sum(len(c.get("conns", [])) for c in connectors)
+          except Exception as error:
+              print("could not read tunnel connections: %s" % error, file=sys.stderr)
+              active = -1
+          if active == 0:
+              print("tunnel has no active connection")
+              break
+          if time.time() > deadline:
+              print("gave up waiting, %d connection(s) still active" % active)
+              break
+          print("waiting for %d connection(s) to close" % active)
+          time.sleep(10)
+    PYTHON
+  }
+}
+
 # The connector reads this from a Kubernetes Secret the operator syncs. It used
 # to be written straight into etcd by the application module (D-02).
 resource "vault_kv_secret_v2" "project_tunnel_token" {
