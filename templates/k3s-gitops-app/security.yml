@@ -12,7 +12,6 @@ on:
 
 permissions:
   contents: read
-  security-events: write
 
 jobs:
   gitleaks:
@@ -32,16 +31,16 @@ jobs:
           docker run --rm -v "$PWD:/repo" \
             ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
             git /repo --redact --no-banner \
-            --report-format sarif --report-path /repo/gitleaks.sarif
+            --report-format json --report-path /repo/gitleaks.json
 
-      # Code scanning may be unavailable for a private repository; the scan result must still gate the job.
-      - name: Upload SARIF
+      - name: Upload raw result
         if: always()
-        continue-on-error: true
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          sarif_file: gitleaks.sarif
-          category: gitleaks
+          name: scan-gitleaks
+          path: gitleaks.json
+          retention-days: 1
+          if-no-files-found: ignore
 
       - name: Notify Discord
         if: steps.scan.outcome == 'failure' && env.DISCORD_WEBHOOK_URL != ''
@@ -67,27 +66,30 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Scan dependencies
-        id: scan
-        continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: fs
           scan-ref: .
           scanners: vuln
-          severity: CRITICAL
-          ignore-unfixed: true
-          limit-severities-for-sarif: true
-          format: sarif
-          output: trivy-fs.sarif
-          exit-code: "1"
+          severity: CRITICAL,HIGH
+          format: json
+          output: trivy-fs.json
+          exit-code: "0"
 
-      - name: Upload SARIF
-        if: always()
+      - name: Check for fixable CRITICAL vulnerabilities
+        id: scan
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        run: |
+          jq -e '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL" and (.FixedVersion // "") != "")] | length == 0' trivy-fs.json
+
+      - name: Upload raw result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          sarif_file: trivy-fs.sarif
-          category: trivy-fs
+          name: scan-trivy-fs
+          path: trivy-fs.json
+          retention-days: 1
+          if-no-files-found: ignore
 
       - name: Notify Discord
         if: steps.scan.outcome == 'failure' && env.DISCORD_WEBHOOK_URL != ''
@@ -136,26 +138,29 @@ jobs:
         run: docker build -t "cnp-scan/${{ matrix.image.name }}:${{ github.sha }}" "${{ matrix.image.context }}"
 
       - name: Scan image
-        id: scan
-        continue-on-error: true
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: cnp-scan/${{ matrix.image.name }}:${{ github.sha }}
           scanners: vuln
-          severity: CRITICAL
-          ignore-unfixed: true
-          limit-severities-for-sarif: true
-          format: sarif
-          output: trivy-image.sarif
-          exit-code: "1"
+          severity: CRITICAL,HIGH
+          format: json
+          output: trivy-image.json
+          exit-code: "0"
 
-      - name: Upload SARIF
-        if: always()
+      - name: Check for fixable CRITICAL vulnerabilities
+        id: scan
         continue-on-error: true
-        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        run: |
+          jq -e '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL" and (.FixedVersion // "") != "")] | length == 0' trivy-image.json
+
+      - name: Upload raw result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          sarif_file: trivy-image.sarif
-          category: trivy-image-${{ matrix.image.name }}
+          name: scan-trivy-image-${{ matrix.image.name }}
+          path: trivy-image.json
+          retention-days: 1
+          if-no-files-found: ignore
 
       - name: Notify Discord
         if: steps.scan.outcome == 'failure' && env.DISCORD_WEBHOOK_URL != ''
@@ -172,3 +177,86 @@ jobs:
       - name: Fail on CRITICAL vulnerabilities
         if: steps.scan.outcome == 'failure'
         run: exit 1
+
+  report:
+    needs: [gitleaks, trivy-fs, trivy-image]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download raw results
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: scan-*
+          path: results
+
+      - name: Build report
+        env:
+          REPO: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
+          REF: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          read_or_null() { if [ -f "$1" ]; then cat "$1"; else echo null; fi; }
+
+          images='[]'
+          for dir in results/scan-trivy-image-*/; do
+            [ -d "$dir" ] || continue
+            name=${dir#results/scan-trivy-image-}
+            images=$(jq -c --arg name "${name%/}" --slurpfile report "${dir}trivy-image.json" '. + [{name: $name, report: $report[0]}]' <<<"$images")
+          done
+
+          jq -n \
+            --arg repo "$REPO" --arg sha "$COMMIT_SHA" --arg ref "$REF" --arg runUrl "$RUN_URL" \
+            --argjson gitleaks "$(read_or_null results/scan-gitleaks/gitleaks.json)" \
+            --argjson trivyFs "$(read_or_null results/scan-trivy-fs/trivy-fs.json)" \
+            --argjson images "$images" '
+              def trivy:
+                if . == null then {status: "skipped", findings: 0, critical: 0, high: 0, critical_cves: []}
+                else
+                  [.Results[]?.Vulnerabilities[]?] as $vulns
+                  | ($vulns | map(select(.Severity == "CRITICAL"))) as $critical
+                  | {
+                      status: (if ($critical | map(select((.FixedVersion // "") != "")) | length) > 0 then "fail" else "pass" end),
+                      findings: ($vulns | length),
+                      critical: ($critical | length),
+                      high: ($vulns | map(select(.Severity == "HIGH")) | length),
+                      critical_cves: ($critical | map(.VulnerabilityID) | unique)
+                    }
+                end;
+              ($images | map(.report | trivy)) as $perImage
+              | {
+                  schema_version: 1,
+                  repo: $repo,
+                  commit: $sha,
+                  ref: $ref,
+                  run_url: $runUrl,
+                  generated_at: (now | todate),
+                  scanners: {
+                    gitleaks:
+                      (if $gitleaks == null then {status: "skipped", findings: 0, leaks: []}
+                       else {
+                         status: (if ($gitleaks | length) > 0 then "fail" else "pass" end),
+                         findings: ($gitleaks | length),
+                         leaks: ($gitleaks | map({rule_id: .RuleID, file: .File, line: .StartLine}))
+                       } end),
+                    trivy_fs: ($trivyFs | trivy),
+                    trivy_image:
+                      (if ($perImage | length) == 0 then {status: "skipped", findings: 0, critical: 0, high: 0, critical_cves: [], images: []}
+                       else {
+                         status: (if any($perImage[]; .status == "fail") then "fail" else "pass" end),
+                         findings: ($perImage | map(.findings) | add),
+                         critical: ($perImage | map(.critical) | add),
+                         high: ($perImage | map(.high) | add),
+                         critical_cves: ($perImage | map(.critical_cves) | add | unique),
+                         images: ($images | map(.name))
+                       } end)
+                  }
+                }' > cnp-security-report.json
+          cat cnp-security-report.json
+
+      - name: Upload report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cnp-security-report
+          path: cnp-security-report.json
+          retention-days: 30
