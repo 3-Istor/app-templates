@@ -115,6 +115,22 @@ resource "keycloak_openid_client" "app_client" {
   ]
 }
 
+# The groups scope comes from project-bootstrap (tenant realm) or exists in the
+# platform realm; it is what infra-templates ingress.allowedGroups checks.
+resource "keycloak_openid_client_default_scopes" "app_client_scopes" {
+  realm_id  = keycloak_openid_client.app_client.realm_id
+  client_id = keycloak_openid_client.app_client.id
+  default_scopes = [
+    "acr",
+    "basic",
+    "email",
+    "groups",
+    "profile",
+    "roles",
+    "web-origins",
+  ]
+}
+
 # ==============================================================================
 # 3. SECRETS — everything Kubernetes needs, delivered through Vault
 # ==============================================================================
