@@ -335,6 +335,82 @@ resource "keycloak_oidc_identity_provider" "platform_idp" {
 
 
 # ==============================================================================
+# PROJECT GROUPS IN THE TENANT REALM (app access by membership)
+# ==============================================================================
+
+# An app's SecurityPolicy can only allow groups of the app's own realm
+# (infra-templates ingress.allowedGroups). Project membership lives in the
+# platform realm, so each login through the broker copies it into these groups.
+resource "keycloak_group" "tenant_project_members" {
+  realm_id = keycloak_realm.tenant_realm.id
+  name     = "project-members"
+}
+
+resource "keycloak_group" "tenant_project_admins" {
+  realm_id = keycloak_realm.tenant_realm.id
+  name     = "project-admins"
+}
+
+# FORCE re-evaluates the claim at every broker login, so removing someone from
+# the platform group takes their access away at their next login.
+resource "keycloak_custom_identity_provider_mapper" "platform_members" {
+  realm                    = keycloak_realm.tenant_realm.id
+  name                     = "platform-project-members"
+  identity_provider_alias  = keycloak_oidc_identity_provider.platform_idp.alias
+  identity_provider_mapper = "oidc-advanced-group-idp-mapper"
+  extra_config = {
+    claims                   = jsonencode([{ key = "groups", value = keycloak_group.project_members.name }])
+    "are.claim.values.regex" = "false"
+    group                    = "/${keycloak_group.tenant_project_members.name}"
+    syncMode                 = "FORCE"
+  }
+}
+
+resource "keycloak_custom_identity_provider_mapper" "platform_admins" {
+  realm                    = keycloak_realm.tenant_realm.id
+  name                     = "platform-project-admins"
+  identity_provider_alias  = keycloak_oidc_identity_provider.platform_idp.alias
+  identity_provider_mapper = "oidc-advanced-group-idp-mapper"
+  extra_config = {
+    claims                   = jsonencode([{ key = "groups", value = keycloak_group.project_admins.name }])
+    "are.claim.values.regex" = "false"
+    group                    = "/${keycloak_group.tenant_project_admins.name}"
+    syncMode                 = "FORCE"
+  }
+}
+
+# The broker only sees the platform groups if the platform realm puts them in
+# the token it issues to the broker client.
+resource "keycloak_openid_client_default_scopes" "broker_scopes" {
+  realm_id  = var.keycloak_realm
+  client_id = keycloak_openid_client.tenant_broker_client.id
+  default_scopes = [
+    "acr",
+    "basic",
+    "email",
+    "groups",
+    "profile",
+    "roles",
+    "web-origins",
+  ]
+}
+
+# Apps of this realm read the groups claim from their access token.
+resource "keycloak_openid_client_scope" "tenant_groups" {
+  realm_id               = keycloak_realm.tenant_realm.id
+  name                   = "groups"
+  include_in_token_scope = true
+}
+
+resource "keycloak_openid_group_membership_protocol_mapper" "tenant_groups" {
+  realm_id        = keycloak_realm.tenant_realm.id
+  client_scope_id = keycloak_openid_client_scope.tenant_groups.id
+  name            = "groups"
+  claim_name      = "groups"
+  full_path       = false
+}
+
+# ==============================================================================
 # Gatus
 # ==============================================================================
 resource "vault_kv_secret_v2" "project_system_secrets" {
