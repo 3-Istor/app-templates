@@ -1,0 +1,174 @@
+name: Security Scans
+
+on:
+  push:
+    branches: [ "**" ]
+    paths-ignore:
+      - "deploy/**"
+  pull_request:
+    branches: [ "main" ]
+    paths-ignore:
+      - "deploy/**"
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    env:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # The official action needs a paid license for organization repositories, so run the pinned image directly.
+      - name: Scan history for secrets
+        id: scan
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD:/repo" \
+            ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            git /repo --redact --no-banner \
+            --report-format sarif --report-path /repo/gitleaks.sarif
+
+      # Code scanning may be unavailable for a private repository; the scan result must still gate the job.
+      - name: Upload SARIF
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: gitleaks.sarif
+          category: gitleaks
+
+      - name: Notify Discord
+        if: steps.scan.outcome == 'failure' && env.DISCORD_WEBHOOK_URL != ''
+        env:
+          FINDING: Secret detected
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          jq -n --arg content "$FINDING in $REPO ($REF): $RUN_URL" \
+            '{content: $content, allowed_mentions: {parse: []}}' \
+            | curl -fsS -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
+
+      - name: Fail on secrets
+        if: steps.scan.outcome == 'failure'
+        run: exit 1
+
+  trivy-fs:
+    runs-on: ubuntu-latest
+    env:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Scan dependencies
+        id: scan
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: CRITICAL
+          ignore-unfixed: true
+          limit-severities-for-sarif: true
+          format: sarif
+          output: trivy-fs.sarif
+          exit-code: "1"
+
+      - name: Upload SARIF
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: trivy-fs.sarif
+          category: trivy-fs
+
+      - name: Notify Discord
+        if: steps.scan.outcome == 'failure' && env.DISCORD_WEBHOOK_URL != ''
+        env:
+          FINDING: CRITICAL vulnerability with a fix available in dependencies
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          jq -n --arg content "$FINDING in $REPO ($REF): $RUN_URL" \
+            '{content: $content, allowed_mentions: {parse: []}}' \
+            | curl -fsS -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
+
+      - name: Fail on CRITICAL vulnerabilities
+        if: steps.scan.outcome == 'failure'
+        run: exit 1
+
+  discover-images:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.find.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Find Dockerfiles
+        id: find
+        run: |
+          matrix=$(find . -name Dockerfile -not -path '*/node_modules/*' -printf '%h\n' \
+            | jq -R -s -c 'split("\n") | map(select(length > 0)) | map({context: ., name: (ltrimstr("./") | if . == "." then "app" else gsub("/"; "-") end)})')
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  trivy-image:
+    needs: discover-images
+    if: needs.discover-images.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    env:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.discover-images.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Build image for scanning
+        run: docker build -t "cnp-scan/${{ matrix.image.name }}:${{ github.sha }}" "${{ matrix.image.context }}"
+
+      - name: Scan image
+        id: scan
+        continue-on-error: true
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: cnp-scan/${{ matrix.image.name }}:${{ github.sha }}
+          scanners: vuln
+          severity: CRITICAL
+          ignore-unfixed: true
+          limit-severities-for-sarif: true
+          format: sarif
+          output: trivy-image.sarif
+          exit-code: "1"
+
+      - name: Upload SARIF
+        if: always()
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@2892aa5e19bbd11bc0cff5427e3b750a04d9e3c2 # v4.38.2
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image-${{ matrix.image.name }}
+
+      - name: Notify Discord
+        if: steps.scan.outcome == 'failure' && env.DISCORD_WEBHOOK_URL != ''
+        env:
+          FINDING: CRITICAL vulnerability with a fix available in image ${{ matrix.image.name }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          jq -n --arg content "$FINDING in $REPO ($REF): $RUN_URL" \
+            '{content: $content, allowed_mentions: {parse: []}}' \
+            | curl -fsS -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
+
+      - name: Fail on CRITICAL vulnerabilities
+        if: steps.scan.outcome == 'failure'
+        run: exit 1
