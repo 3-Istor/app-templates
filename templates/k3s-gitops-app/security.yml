@@ -256,20 +256,28 @@ jobs:
           TRIGGER: ${{ github.event_name }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          read_or_null() { if [ -f "$1" ]; then cat "$1"; else echo null; fi; }
+          # Results go through files: a real image's Trivy report is larger
+          # than the kernel's limit on a command-line argument.
+          echo null > missing.json
+          or_null() { if [ -f "$1" ]; then echo "$1"; else echo missing.json; fi; }
 
-          images='[]'
+          echo '[]' > images.json
           for dir in results/scan-trivy-image-*/; do
             [ -d "$dir" ] || continue
             name=${dir#results/scan-trivy-image-}
-            images=$(jq -c --arg name "${name%/}" --slurpfile report "${dir}trivy-image.json" '. + [{name: $name, report: $report[0]}]' <<<"$images")
+            jq -c --arg name "${name%/}" --slurpfile report "${dir}trivy-image.json" '. + [{name: $name, report: $report[0]}]' images.json > images.next.json
+            mv images.next.json images.json
           done
 
           jq -n \
             --arg repo "$REPO" --arg sha "$COMMIT_SHA" --arg ref "$REF" --arg trigger "$TRIGGER" --arg runUrl "$RUN_URL" \
-            --argjson gitleaks "$(read_or_null results/scan-gitleaks/gitleaks.json)" \
-            --argjson trivyFs "$(read_or_null results/scan-trivy-fs/trivy-fs.json)" \
-            --argjson images "$images" '
+            --slurpfile gitleaksFile "$(or_null results/scan-gitleaks/gitleaks.json)" \
+            --slurpfile trivyFsFile "$(or_null results/scan-trivy-fs/trivy-fs.json)" \
+            --slurpfile imagesFile images.json '
+              $gitleaksFile[0] as $gitleaks
+              | $trivyFsFile[0] as $trivyFs
+              | $imagesFile[0] as $images
+              |
               def trivy:
                 if . == null then {status: "skipped", findings: 0, critical: 0, high: 0, vulnerabilities: []}
                 else
