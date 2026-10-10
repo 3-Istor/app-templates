@@ -11,7 +11,7 @@ service:
   ports:
     - name: http
       port: 80
-      targetPort: 80
+      targetPort: 8080
 
 secrets:
   enabled: true

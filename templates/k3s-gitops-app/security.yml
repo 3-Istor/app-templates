@@ -1,0 +1,378 @@
+name: Security Scans
+
+on:
+  push:
+    branches: [ "**" ]
+    paths-ignore:
+      - "deploy/**"
+  pull_request:
+    branches: [ "main" ]
+    paths-ignore:
+      - "deploy/**"
+  # New CVEs are published without anyone pushing. Images that run are rescanned
+  # daily in the cluster; this weekly run covers the repo's own dependencies.
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks:
+    runs-on: ubuntu-latest
+    env:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Read blocking setting
+        run: |
+          # Written by the CMP; a value locked by the project admin is restored there.
+          fail_on=none
+          [ -f deploy/security.yaml ] && fail_on=$(yq '.ci.failOn // "none"' deploy/security.yaml)
+          echo "CNP_CI_FAIL_ON=$fail_on" >> "$GITHUB_ENV"
+
+      - name: Apply exceptions
+        run: |
+          touch .gitleaksignore
+          [ -f deploy/security-exceptions.yaml ] || exit 0
+          yq -o=json '.exceptions // []' deploy/security-exceptions.yaml \
+            | jq -r --arg today "$(date -u +%F)" \
+                '.[] | select(.kind == "secret" and (.expires // "9999-12-31") >= $today) | .id' \
+            > .gitleaksignore
+
+      # The official action needs a paid license for organization repositories, so run the pinned image directly.
+      - name: Scan history for secrets
+        id: scan
+        continue-on-error: true
+        run: |
+          docker run --rm -v "$PWD:/repo" \
+            ghcr.io/gitleaks/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            git /repo --redact --no-banner \
+            --report-format json --report-path /repo/gitleaks.json
+
+      - name: Upload raw result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scan-gitleaks
+          path: gitleaks.json
+          retention-days: 1
+          if-no-files-found: ignore
+
+      - name: Notify Discord
+        if: steps.scan.outcome == 'failure' && env.DISCORD_WEBHOOK_URL != '' && github.event_name != 'schedule'
+        env:
+          FINDING: Secret detected
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          jq -n --arg content "$FINDING in $REPO ($REF): $RUN_URL" \
+            '{content: $content, allowed_mentions: {parse: []}}' \
+            | curl -fsS -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
+
+      - name: Fail on secrets
+        if: steps.scan.outcome == 'failure' && env.CNP_CI_FAIL_ON != 'none'
+        run: exit 1
+
+  trivy-fs:
+    runs-on: ubuntu-latest
+    env:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read blocking setting
+        run: |
+          # Written by the CMP; a value locked by the project admin is restored there.
+          fail_on=none
+          [ -f deploy/security.yaml ] && fail_on=$(yq '.ci.failOn // "none"' deploy/security.yaml)
+          echo "CNP_CI_FAIL_ON=$fail_on" >> "$GITHUB_ENV"
+
+      - name: Apply exceptions
+        run: |
+          echo '{}' > .trivyignore.yaml
+          [ -f deploy/security-exceptions.yaml ] || exit 0
+          yq -o=json '.exceptions // []' deploy/security-exceptions.yaml \
+            | jq --arg today "$(date -u +%F)" '{vulnerabilities: [.[]
+                | select(.kind == "vulnerability" and (.expires // "9999-12-31") >= $today)
+                | {id, purls, paths, expired_at: .expires, statement}
+                | with_entries(select(.value != null))]}' \
+            | yq -P '(.vulnerabilities[] | select(has("expired_at")) | .expired_at) tag = "!!timestamp"' > .trivyignore.yaml
+
+      - name: Scan dependencies
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          format: json
+          output: trivy-fs.json
+          exit-code: "0"
+          trivyignores: .trivyignore.yaml
+
+      - name: Check for fixable CRITICAL vulnerabilities
+        id: scan
+        continue-on-error: true
+        run: |
+          jq -e '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL" and (.FixedVersion // "") != "")] | length == 0' trivy-fs.json
+
+      - name: Upload raw result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scan-trivy-fs
+          path: trivy-fs.json
+          retention-days: 1
+          if-no-files-found: ignore
+
+      - name: Notify Discord
+        if: steps.scan.outcome == 'failure' && env.DISCORD_WEBHOOK_URL != '' && github.event_name != 'schedule'
+        env:
+          FINDING: CRITICAL vulnerability with a fix available in dependencies
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          jq -n --arg content "$FINDING in $REPO ($REF): $RUN_URL" \
+            '{content: $content, allowed_mentions: {parse: []}}' \
+            | curl -fsS -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
+
+      - name: Fail on CRITICAL vulnerabilities
+        if: steps.scan.outcome == 'failure' && env.CNP_CI_FAIL_ON != 'none'
+        run: exit 1
+
+  # Report-only: Dockerfile findings show in the CMP but never fail the build.
+  trivy-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Scan Dockerfiles
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_MISCONFIG_SCANNERS: dockerfile
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: CRITICAL,HIGH,MEDIUM,LOW
+          format: json
+          output: trivy-config.json
+          exit-code: "0"
+
+      - name: Upload raw result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scan-trivy-config
+          path: trivy-config.json
+          retention-days: 1
+          if-no-files-found: ignore
+
+  discover-images:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.find.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Find Dockerfiles
+        id: find
+        run: |
+          matrix=$(find . -name Dockerfile -not -path '*/node_modules/*' -printf '%h\n' \
+            | jq -R -s -c 'split("\n") | map(select(length > 0)) | map({context: ., name: (ltrimstr("./") | if . == "." then "app" else gsub("/"; "-") end)})')
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  trivy-image:
+    needs: discover-images
+    if: needs.discover-images.outputs.matrix != '[]'
+    runs-on: ubuntu-latest
+    env:
+      DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.discover-images.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read blocking setting
+        run: |
+          # Written by the CMP; a value locked by the project admin is restored there.
+          fail_on=none
+          [ -f deploy/security.yaml ] && fail_on=$(yq '.ci.failOn // "none"' deploy/security.yaml)
+          echo "CNP_CI_FAIL_ON=$fail_on" >> "$GITHUB_ENV"
+
+      - name: Apply exceptions
+        run: |
+          echo '{}' > .trivyignore.yaml
+          [ -f deploy/security-exceptions.yaml ] || exit 0
+          yq -o=json '.exceptions // []' deploy/security-exceptions.yaml \
+            | jq --arg today "$(date -u +%F)" '{vulnerabilities: [.[]
+                | select(.kind == "vulnerability" and (.expires // "9999-12-31") >= $today)
+                | {id, purls, paths, expired_at: .expires, statement}
+                | with_entries(select(.value != null))]}' \
+            | yq -P '(.vulnerabilities[] | select(has("expired_at")) | .expired_at) tag = "!!timestamp"' > .trivyignore.yaml
+
+      - name: Build image for scanning
+        run: docker build -t "cnp-scan/${{ matrix.image.name }}:${{ github.sha }}" "${{ matrix.image.context }}"
+
+      - name: Scan image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: cnp-scan/${{ matrix.image.name }}:${{ github.sha }}
+          scanners: vuln
+          severity: CRITICAL,HIGH
+          format: json
+          output: trivy-image.json
+          exit-code: "0"
+          trivyignores: .trivyignore.yaml
+
+      - name: Check for fixable CRITICAL vulnerabilities
+        id: scan
+        continue-on-error: true
+        run: |
+          jq -e '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL" and (.FixedVersion // "") != "")] | length == 0' trivy-image.json
+
+      - name: Upload raw result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scan-trivy-image-${{ matrix.image.name }}
+          path: trivy-image.json
+          retention-days: 1
+          if-no-files-found: ignore
+
+      - name: Notify Discord
+        if: steps.scan.outcome == 'failure' && env.DISCORD_WEBHOOK_URL != '' && github.event_name != 'schedule'
+        env:
+          FINDING: CRITICAL vulnerability with a fix available in image ${{ matrix.image.name }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          jq -n --arg content "$FINDING in $REPO ($REF): $RUN_URL" \
+            '{content: $content, allowed_mentions: {parse: []}}' \
+            | curl -fsS -H "Content-Type: application/json" -d @- "$DISCORD_WEBHOOK_URL"
+
+      - name: Fail on CRITICAL vulnerabilities
+        if: steps.scan.outcome == 'failure' && env.CNP_CI_FAIL_ON != 'none'
+        run: exit 1
+
+  report:
+    needs: [gitleaks, trivy-fs, trivy-config, trivy-image]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download raw results
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: scan-*
+          path: results
+
+      - name: Build report
+        env:
+          REPO: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
+          REF: ${{ github.ref_name }}
+          TRIGGER: ${{ github.event_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          # Results go through files: a real image's Trivy report is larger
+          # than the kernel's limit on a command-line argument.
+          echo null > missing.json
+          or_null() { if [ -f "$1" ]; then echo "$1"; else echo missing.json; fi; }
+
+          echo '[]' > images.json
+          for dir in results/scan-trivy-image-*/; do
+            [ -d "$dir" ] || continue
+            name=${dir#results/scan-trivy-image-}
+            jq -c --arg name "${name%/}" --slurpfile report "${dir}trivy-image.json" '. + [{name: $name, report: $report[0]}]' images.json > images.next.json
+            mv images.next.json images.json
+          done
+
+          jq -n \
+            --arg repo "$REPO" --arg sha "$COMMIT_SHA" --arg ref "$REF" --arg trigger "$TRIGGER" --arg runUrl "$RUN_URL" \
+            --slurpfile gitleaksFile "$(or_null results/scan-gitleaks/gitleaks.json)" \
+            --slurpfile trivyFsFile "$(or_null results/scan-trivy-fs/trivy-fs.json)" \
+            --slurpfile trivyConfigFile "$(or_null results/scan-trivy-config/trivy-config.json)" \
+            --slurpfile imagesFile images.json '
+              $gitleaksFile[0] as $gitleaks
+              | $trivyFsFile[0] as $trivyFs
+              | $trivyConfigFile[0] as $trivyConfig
+              | $imagesFile[0] as $images
+              |
+              def trivy:
+                if . == null then {status: "skipped", findings: 0, critical: 0, high: 0, vulnerabilities: []}
+                else
+                  [.Results[]? as $r | $r.Vulnerabilities[]? | . + {Target: $r.Target, Class: $r.Class}] as $vulns
+                  | ($vulns | map(select(.Severity == "CRITICAL"))) as $critical
+                  | {
+                      status: (if ($critical | map(select((.FixedVersion // "") != "")) | length) > 0 then "fail" else "pass" end),
+                      findings: ($vulns | length),
+                      critical: ($critical | length),
+                      high: ($vulns | map(select(.Severity == "HIGH")) | length),
+                      vulnerabilities: ($vulns | map({
+                        id: .VulnerabilityID, severity: .Severity, package: .PkgName,
+                        purl: (.PkgIdentifier.PURL // null), installed: .InstalledVersion,
+                        fixed: (.FixedVersion // null), title: (.Title // null), target: .Target, class: .Class
+                      }))
+                    }
+                end;
+              ($images | map(.report | trivy)) as $perImage
+              | {
+                  schema_version: 2,
+                  repo: $repo,
+                  commit: $sha,
+                  ref: $ref,
+                  trigger: $trigger,
+                  run_url: $runUrl,
+                  generated_at: (now | todate),
+                  scanners: {
+                    gitleaks:
+                      (if $gitleaks == null then {status: "skipped", findings: 0, leaks: []}
+                       else {
+                         status: (if ($gitleaks | length) > 0 then "fail" else "pass" end),
+                         findings: ($gitleaks | length),
+                         leaks: ($gitleaks | map({rule_id: .RuleID, file: .File, line: .StartLine, commit: .Commit, fingerprint: .Fingerprint}))
+                       } end),
+                    trivy_fs: ($trivyFs | trivy),
+                    trivy_config:
+                      (if $trivyConfig == null then {status: "skipped", findings: 0, misconfigurations: []}
+                       else
+                         ($trivyConfig | [.Results[]? as $r | $r.Misconfigurations[]? | select(.Status == "FAIL") | . + {Target: $r.Target}]) as $failed
+                         | {
+                             status: (if ($failed | map(select(.Severity == "CRITICAL" or .Severity == "HIGH")) | length) > 0 then "fail" else "pass" end),
+                             findings: ($failed | length),
+                             misconfigurations: ($failed | map({
+                               id: .ID, severity: .Severity, title: .Title, message: (.Message // null),
+                               resolution: (.Resolution // null), target: .Target,
+                               line: (.CauseMetadata.StartLine // null), url: (.PrimaryURL // null)
+                             }))
+                           }
+                       end),
+                    trivy_image:
+                      (if ($perImage | length) == 0 then {status: "skipped", findings: 0, critical: 0, high: 0, vulnerabilities: [], images: []}
+                       else {
+                         status: (if any($perImage[]; .status == "fail") then "fail" else "pass" end),
+                         findings: ($perImage | map(.findings) | add),
+                         critical: ($perImage | map(.critical) | add),
+                         high: ($perImage | map(.high) | add),
+                         vulnerabilities: ([$images, $perImage] | transpose | map(.[0].name as $image | .[1].vulnerabilities[] | . + {image: $image})),
+                         images: ($images | map(.name))
+                       } end)
+                  }
+                }' > cnp-security-report.json
+          cat cnp-security-report.json
+
+      - name: Upload report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: cnp-security-report
+          path: cnp-security-report.json
+          retention-days: 30

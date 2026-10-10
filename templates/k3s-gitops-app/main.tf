@@ -69,6 +69,30 @@ resource "github_repository_file" "values_frontend" {
   overwrite_on_create = true
 }
 
+# Written by Terraform rather than carried by the template repos so every
+# generated repo gets the same scans whichever template it came from.
+resource "github_repository_file" "security_workflow" {
+  repository          = github_repository.app.name
+  branch              = "main"
+  file                = ".github/workflows/security.yml"
+  content             = file("${path.module}/security.yml")
+  commit_message      = "chore: add cnp security scans [skip ci]"
+  overwrite_on_create = true
+}
+
+# project-bootstrap writes this secret; the workflow skips the Discord step when
+# the repo secret is empty, so a missing value never breaks the scans.
+data "vault_kv_secret_v2" "discord" {
+  mount = "project-${var.project_name}"
+  name  = "system/discord"
+}
+
+resource "github_actions_secret" "discord_webhook_url" {
+  repository      = github_repository.app.name
+  secret_name     = "DISCORD_WEBHOOK_URL"
+  plaintext_value = data.vault_kv_secret_v2.discord.data["DISCORD_WEBHOOK_URL"]
+}
+
 # ==============================================================================
 # 2. KEYCLOAK OIDC SSO CLIENT
 # ==============================================================================
@@ -88,6 +112,22 @@ resource "keycloak_openid_client" "app_client" {
 
   valid_post_logout_redirect_uris = [
     "https://${local.hostname}/"
+  ]
+}
+
+# The groups scope comes from project-bootstrap (tenant realm) or exists in the
+# platform realm; it is what infra-templates ingress.allowedGroups checks.
+resource "keycloak_openid_client_default_scopes" "app_client_scopes" {
+  realm_id  = keycloak_openid_client.app_client.realm_id
+  client_id = keycloak_openid_client.app_client.id
+  default_scopes = [
+    "acr",
+    "basic",
+    "email",
+    "groups",
+    "profile",
+    "roles",
+    "web-origins",
   ]
 }
 

@@ -251,6 +251,18 @@ resource "keycloak_realm" "tenant_realm" {
   login_theme = "keycloak-theme-kube-lab"
 }
 
+resource "keycloak_realm_events" "tenant_realm" {
+  realm_id = keycloak_realm.tenant_realm.id
+
+  events_enabled    = true
+  events_expiration = 2592000 # 30 days, matching the Loki retention
+
+  admin_events_enabled         = true
+  admin_events_details_enabled = false
+
+  events_listeners = ["jboss-logging"]
+}
+
 # Create a local admin for this specific tenant realm
 resource "random_password" "tenant_admin_pwd" {
   length  = 16
@@ -335,6 +347,82 @@ resource "keycloak_oidc_identity_provider" "platform_idp" {
 
 
 # ==============================================================================
+# PROJECT GROUPS IN THE TENANT REALM (app access by membership)
+# ==============================================================================
+
+# An app's SecurityPolicy can only allow groups of the app's own realm
+# (infra-templates ingress.allowedGroups). Project membership lives in the
+# platform realm, so each login through the broker copies it into these groups.
+resource "keycloak_group" "tenant_project_members" {
+  realm_id = keycloak_realm.tenant_realm.id
+  name     = "project-members"
+}
+
+resource "keycloak_group" "tenant_project_admins" {
+  realm_id = keycloak_realm.tenant_realm.id
+  name     = "project-admins"
+}
+
+# FORCE re-evaluates the claim at every broker login, so removing someone from
+# the platform group takes their access away at their next login.
+resource "keycloak_custom_identity_provider_mapper" "platform_members" {
+  realm                    = keycloak_realm.tenant_realm.id
+  name                     = "platform-project-members"
+  identity_provider_alias  = keycloak_oidc_identity_provider.platform_idp.alias
+  identity_provider_mapper = "oidc-advanced-group-idp-mapper"
+  extra_config = {
+    claims                   = jsonencode([{ key = "groups", value = keycloak_group.project_members.name }])
+    "are.claim.values.regex" = "false"
+    group                    = "/${keycloak_group.tenant_project_members.name}"
+    syncMode                 = "FORCE"
+  }
+}
+
+resource "keycloak_custom_identity_provider_mapper" "platform_admins" {
+  realm                    = keycloak_realm.tenant_realm.id
+  name                     = "platform-project-admins"
+  identity_provider_alias  = keycloak_oidc_identity_provider.platform_idp.alias
+  identity_provider_mapper = "oidc-advanced-group-idp-mapper"
+  extra_config = {
+    claims                   = jsonencode([{ key = "groups", value = keycloak_group.project_admins.name }])
+    "are.claim.values.regex" = "false"
+    group                    = "/${keycloak_group.tenant_project_admins.name}"
+    syncMode                 = "FORCE"
+  }
+}
+
+# The broker only sees the platform groups if the platform realm puts them in
+# the token it issues to the broker client.
+resource "keycloak_openid_client_default_scopes" "broker_scopes" {
+  realm_id  = var.keycloak_realm
+  client_id = keycloak_openid_client.tenant_broker_client.id
+  default_scopes = [
+    "acr",
+    "basic",
+    "email",
+    "groups",
+    "profile",
+    "roles",
+    "web-origins",
+  ]
+}
+
+# Apps of this realm read the groups claim from their access token.
+resource "keycloak_openid_client_scope" "tenant_groups" {
+  realm_id               = keycloak_realm.tenant_realm.id
+  name                   = "groups"
+  include_in_token_scope = true
+}
+
+resource "keycloak_openid_group_membership_protocol_mapper" "tenant_groups" {
+  realm_id        = keycloak_realm.tenant_realm.id
+  client_scope_id = keycloak_openid_client_scope.tenant_groups.id
+  name            = "groups"
+  claim_name      = "groups"
+  full_path       = false
+}
+
+# ==============================================================================
 # Gatus
 # ==============================================================================
 resource "vault_kv_secret_v2" "project_system_secrets" {
@@ -413,6 +501,62 @@ resource "time_sleep" "wait_for_tunnel_disconnect" {
 
   create_duration  = "0s"
   destroy_duration = "45s"
+}
+
+# A fixed delay is not enough: the connector only stops once ArgoCD notices the
+# registry record is gone, which depends on its sync cycle (confirmed live: 45s
+# was not enough, Cloudflare answered 1022 "tunnel has active connections").
+# So wait for Cloudflare itself to report no connection. After the timeout the
+# destroy goes on and Cloudflare's own error surfaces, which a retry fixes.
+#
+# time_sleep above stays: projects bootstrapped before this resource existed
+# still have it in their state, and removing its provider would break their
+# destroy.
+#
+# CLOUDFLARE_API_TOKEN comes from the environment of the Terraform process: a
+# destroy-time provisioner can only read `self`, and the token must not be
+# written to state.
+resource "terraform_data" "wait_for_tunnel_connections_closed" {
+  depends_on = [cloudflare_zero_trust_tunnel_cloudflared.project_tunnel]
+
+  input = {
+    account_id = var.cloudflare_account_id
+    tunnel_id  = cloudflare_zero_trust_tunnel_cloudflared.project_tunnel.id
+  }
+
+  provisioner "local-exec" {
+    when        = destroy
+    interpreter = ["python3", "-c"]
+    environment = {
+      ACCOUNT_ID = self.input.account_id
+      TUNNEL_ID  = self.input.tunnel_id
+    }
+    command = <<-PYTHON
+      import json, os, sys, time, urllib.request
+
+      url = "https://api.cloudflare.com/client/v4/accounts/%s/cfd_tunnel/%s/connections" % (
+          os.environ["ACCOUNT_ID"], os.environ["TUNNEL_ID"])
+      headers = {"Authorization": "Bearer " + os.environ["CLOUDFLARE_API_TOKEN"]}
+      deadline = time.time() + 600
+
+      while True:
+          try:
+              request = urllib.request.Request(url, headers=headers)
+              connectors = json.load(urllib.request.urlopen(request, timeout=20))["result"]
+              active = sum(len(c.get("conns", [])) for c in connectors)
+          except Exception as error:
+              print("could not read tunnel connections: %s" % error, file=sys.stderr)
+              active = -1
+          if active == 0:
+              print("tunnel has no active connection")
+              break
+          if time.time() > deadline:
+              print("gave up waiting, %d connection(s) still active" % active)
+              break
+          print("waiting for %d connection(s) to close" % active)
+          time.sleep(10)
+    PYTHON
+  }
 }
 
 # The connector reads this from a Kubernetes Secret the operator syncs. It used
