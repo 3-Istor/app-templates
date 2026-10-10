@@ -251,6 +251,18 @@ resource "keycloak_realm" "tenant_realm" {
   login_theme = "keycloak-theme-kube-lab"
 }
 
+resource "keycloak_realm_events" "tenant_realm" {
+  realm_id = keycloak_realm.tenant_realm.id
+
+  events_enabled    = true
+  events_expiration = 2592000 # 30 days, matching the Loki retention
+
+  admin_events_enabled         = true
+  admin_events_details_enabled = false
+
+  events_listeners = ["jboss-logging"]
+}
+
 # Create a local admin for this specific tenant realm
 resource "random_password" "tenant_admin_pwd" {
   length  = 16
