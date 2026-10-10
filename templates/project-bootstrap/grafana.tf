@@ -16,9 +16,17 @@ resource "grafana_data_source" "loki" {
   url         = "http://loki-gateway.observability.svc.cluster.local:80"
   access_mode = "proxy"
 
+  # The project's own Loki tenant. Project admins are Grafana Editors, who
+  # cannot edit a datasource, so they cannot point it at another tenant.
   http_headers = {
     "X-Scope-OrgID" = var.project_name
   }
+
+  basic_auth_enabled  = true
+  basic_auth_username = "grafana-projects"
+  secure_json_data_encoded = jsonencode({
+    basicAuthPassword = var.loki_password
+  })
 }
 
 # 3. Add the VictoriaMetrics Data Source (Isolated Metrics)

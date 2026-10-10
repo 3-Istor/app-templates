@@ -89,3 +89,9 @@ variable "grafana_admin_password" {
   sensitive   = true
   description = "Admin password for Grafana"
 }
+
+variable "loki_password" {
+  description = "Password of the grafana-projects user of the Loki gateway."
+  type        = string
+  sensitive   = true
+}
