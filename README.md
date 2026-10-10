@@ -1,7 +1,32 @@
-# Application as a Service (AaaS) Templates
+# app-templates
 
-This repository lists all the Terraform templates used by the ARCL CMP to deploy applications on OpenStack and AWS.
-It is designed to be modular, reusable, and easily testable both manually and through the CMP.
+## Rôle
+
+Catalogue des plans de provisioning exécutés par CMP. Les templates assemblent les modules d’infrastructure et de configuration ; `project-bootstrap` prépare un projet et `k3s-gitops-app` initialise une application GitOps.
+
+## Technologies
+
+Terraform/HCL, manifests JSON, templates cloud-init et YAML, scripts Shell ; providers OpenStack, AWS, GitHub, Keycloak, Vault et Cloudflare selon le template.
+
+## Entrées
+
+| Origine / destinataire | Contenu et transmission |
+| --- | --- |
+| CMP | Variables du projet et de l’application, cloud cible, paramètres et accès nécessaires à l’exécution Terraform. |
+| template-html-css / template-app-webapp-python-fastapi-react | Dépôt source choisi via `template_repo_name` ; copie par le mécanisme GitHub repository template. |
+| Cloud / services externes | Infrastructure cloud et API accessibles, identité, secrets et DNS nécessaires aux providers. |
+
+## Sorties et consommateurs
+
+| Origine / destinataire | Contenu et transmission |
+| --- | --- |
+| CMP | Catalogue `manifest.json` et plans Terraform récupérés par clone Git ; outputs de l’exécution. |
+| Dépôts applicatifs | Dépôts privés initialisés à partir du template choisi et fichiers `deploy/*.yaml` configurés. |
+| Services cloud / identité / secrets | Ressources provisionnées par le template sélectionné. Sur le chemin `k3s-gitops-app`, GitHub, Keycloak, Vault et DNS sont configurés ; les objets applicatifs Kubernetes sont générés par Argo CD depuis le registre. |
+
+## Documentation CNP
+
+[Fiche `app-templates` et workflows inter-repo](https://github.com/3-Istor/cnp-docs/blob/main/docs/04-templates/00-github-repositories-landscape.md#app-templates).
 
 ## 🏗️ Architecture Overview
 
@@ -19,7 +44,7 @@ Templates are the entry points. They act as "Glue", combining a specific softwar
 ## 🚀 Manual Deployment & Testing
 
 You can use these templates manually (simulating the CMP behavior).
-Ensure you have sourced your `admin-openrc.sh` from Cloud Git repo before starting.
+Configurer les accès OpenStack/AWS avant de démarrer. Le socle et les procédures OpenStack sont documentés dans [Cloud](https://github.com/3-Istor/Cloud).
 
 1.  **Navigate to the desired template:**
     ```bash
@@ -52,4 +77,4 @@ Ensure you have sourced your `admin-openrc.sh` from Cloud Git repo before starti
     ```
 
 ## 🧠 Design for Failure (Saga Pattern)
-When used by the CMP, dynamic backend states are stored securely in S3. If a hybrid deployment fails (e.g., OpenStack succeeds but AWS fails), the CMP will trigger a rollback `terraform destroy` on the specific template to maintain a perfectly clean state, ensuring zero orphaned resources.
+Les templates déclarent un backend S3 ; CMP fournit la configuration de state lors de l’exécution. Les chemins de compensation et de destruction sont implémentés côté CMP. Vérifier les journaux et le state après un échec : leur présence ne garantit pas à elle seule l’absence de ressources orphelines.
