@@ -35,10 +35,17 @@ resource "grafana_data_source" "victoriametrics" {
   type   = "prometheus"
   name   = "Metrics - ${title(var.project_name)}"
 
-  # VictoriaMetrics handles multi-tenancy directly through the URL path
-  url         = "http://vm-victoria-metrics-cluster-vmauth.observability.svc.cluster.local:8427/select/${var.project_name}/prometheus"
+  # vmauth lets this project's user read only the project's namespaces: it
+  # adds extra_filters to every query (users written by the CMP).
+  url         = "http://vm-victoria-metrics-cluster-vmauth.observability.svc.cluster.local:8427"
   access_mode = "proxy"
   is_default  = true
+
+  basic_auth_enabled  = true
+  basic_auth_username = "project-${var.project_name}"
+  secure_json_data_encoded = jsonencode({
+    basicAuthPassword = var.metrics_password
+  })
 }
 
 # ==============================================================================

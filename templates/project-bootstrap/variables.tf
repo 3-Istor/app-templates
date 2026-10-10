@@ -95,3 +95,10 @@ variable "loki_password" {
   type        = string
   sensitive   = true
 }
+
+variable "metrics_password" {
+  description = "Password of the project's vmauth user, derived by the CMP."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
