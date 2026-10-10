@@ -147,6 +147,33 @@ jobs:
         if: steps.scan.outcome == 'failure' && env.CNP_CI_FAIL_ON != 'none'
         run: exit 1
 
+  # Report-only: Dockerfile findings show in the CMP but never fail the build.
+  trivy-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Scan Dockerfiles
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_MISCONFIG_SCANNERS: dockerfile
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: CRITICAL,HIGH,MEDIUM,LOW
+          format: json
+          output: trivy-config.json
+          exit-code: "0"
+
+      - name: Upload raw result
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: scan-trivy-config
+          path: trivy-config.json
+          retention-days: 1
+          if-no-files-found: ignore
+
   discover-images:
     runs-on: ubuntu-latest
     outputs:
@@ -238,7 +265,7 @@ jobs:
         run: exit 1
 
   report:
-    needs: [gitleaks, trivy-fs, trivy-image]
+    needs: [gitleaks, trivy-fs, trivy-config, trivy-image]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -273,9 +300,11 @@ jobs:
             --arg repo "$REPO" --arg sha "$COMMIT_SHA" --arg ref "$REF" --arg trigger "$TRIGGER" --arg runUrl "$RUN_URL" \
             --slurpfile gitleaksFile "$(or_null results/scan-gitleaks/gitleaks.json)" \
             --slurpfile trivyFsFile "$(or_null results/scan-trivy-fs/trivy-fs.json)" \
+            --slurpfile trivyConfigFile "$(or_null results/scan-trivy-config/trivy-config.json)" \
             --slurpfile imagesFile images.json '
               $gitleaksFile[0] as $gitleaks
               | $trivyFsFile[0] as $trivyFs
+              | $trivyConfigFile[0] as $trivyConfig
               | $imagesFile[0] as $images
               |
               def trivy:
@@ -313,6 +342,20 @@ jobs:
                          leaks: ($gitleaks | map({rule_id: .RuleID, file: .File, line: .StartLine, commit: .Commit, fingerprint: .Fingerprint}))
                        } end),
                     trivy_fs: ($trivyFs | trivy),
+                    trivy_config:
+                      (if $trivyConfig == null then {status: "skipped", findings: 0, misconfigurations: []}
+                       else
+                         ($trivyConfig | [.Results[]? as $r | $r.Misconfigurations[]? | select(.Status == "FAIL") | . + {Target: $r.Target}]) as $failed
+                         | {
+                             status: (if ($failed | map(select(.Severity == "CRITICAL" or .Severity == "HIGH")) | length) > 0 then "fail" else "pass" end),
+                             findings: ($failed | length),
+                             misconfigurations: ($failed | map({
+                               id: .ID, severity: .Severity, title: .Title, message: (.Message // null),
+                               resolution: (.Resolution // null), target: .Target,
+                               line: (.CauseMetadata.StartLine // null), url: (.PrimaryURL // null)
+                             }))
+                           }
+                       end),
                     trivy_image:
                       (if ($perImage | length) == 0 then {status: "skipped", findings: 0, critical: 0, high: 0, vulnerabilities: [], images: []}
                        else {
