@@ -17,3 +17,8 @@ output "app_type" {
   description = "fullstack or static — decides the component split and the values file layout"
   value       = local.app_type
 }
+
+output "github_repo_url" {
+  description = "Original source URL for imports; generated repository URL for catalog apps."
+  value       = local.create_repository ? github_repository.app[0].html_url : var.existing_repository_url
+}

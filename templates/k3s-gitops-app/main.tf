@@ -1,6 +1,7 @@
 locals {
-  app_type   = var.template_repo_name == "template-app-webapp-python-fastapi-react" ? "fullstack" : "static"
-  components = local.app_type == "fullstack" ? ["frontend", "backend"] : ["app"]
+  create_repository = var.repository_mode == "create"
+  app_type          = local.create_repository ? (var.template_repo_name == "template-app-webapp-python-fastapi-react" ? "fullstack" : "static") : "static"
+  components        = local.app_type == "fullstack" ? ["frontend", "backend"] : ["app"]
 
   hostname = "${var.app_name}-${var.project_name}.${var.domain}"
 
@@ -25,6 +26,7 @@ locals {
 # ==============================================================================
 
 resource "github_repository" "app" {
+  count       = local.create_repository ? 1 : 0
   name        = var.app_name
   description = "Provisioned by CNP for Project ${var.project_name}"
   visibility  = "private"
@@ -37,8 +39,8 @@ resource "github_repository" "app" {
 }
 
 resource "github_repository_file" "values_backend" {
-  count      = local.app_type == "fullstack" ? 1 : 0
-  repository = github_repository.app.name
+  count      = local.create_repository && local.app_type == "fullstack" ? 1 : 0
+  repository = github_repository.app[0].name
   branch     = "main"
   file       = "deploy/values-backend.yaml"
   content = templatefile("${path.module}/templates/values-backend.yaml.tpl", {
@@ -52,7 +54,8 @@ resource "github_repository_file" "values_backend" {
 }
 
 resource "github_repository_file" "values_frontend" {
-  repository = github_repository.app.name
+  count      = local.create_repository ? 1 : 0
+  repository = github_repository.app[0].name
   branch     = "main"
   file       = local.app_type == "fullstack" ? "deploy/values-frontend.yaml" : "deploy/values.yaml"
   content = templatefile(
@@ -72,7 +75,8 @@ resource "github_repository_file" "values_frontend" {
 # Written by Terraform rather than carried by the template repos so every
 # generated repo gets the same scans whichever template it came from.
 resource "github_repository_file" "security_workflow" {
-  repository          = github_repository.app.name
+  count               = local.create_repository ? 1 : 0
+  repository          = github_repository.app[0].name
   branch              = "main"
   file                = ".github/workflows/security.yml"
   content             = file("${path.module}/security.yml")
@@ -83,14 +87,16 @@ resource "github_repository_file" "security_workflow" {
 # project-bootstrap writes this secret; the workflow skips the Discord step when
 # the repo secret is empty, so a missing value never breaks the scans.
 data "vault_kv_secret_v2" "discord" {
+  count = local.create_repository ? 1 : 0
   mount = "project-${var.project_name}"
   name  = "system/discord"
 }
 
 resource "github_actions_secret" "discord_webhook_url" {
-  repository      = github_repository.app.name
+  count           = local.create_repository ? 1 : 0
+  repository      = github_repository.app[0].name
   secret_name     = "DISCORD_WEBHOOK_URL"
-  plaintext_value = data.vault_kv_secret_v2.discord.data["DISCORD_WEBHOOK_URL"]
+  plaintext_value = data.vault_kv_secret_v2.discord[0].data["DISCORD_WEBHOOK_URL"]
 }
 
 # ==============================================================================
@@ -241,6 +247,7 @@ resource "cloudflare_dns_record" "app_cname" {
 # ==============================================================================
 
 resource "null_resource" "delete_ghcr_packages" {
+  count = local.create_repository ? 1 : 0
   triggers = {
     app_name     = var.app_name
     github_owner = var.github_owner

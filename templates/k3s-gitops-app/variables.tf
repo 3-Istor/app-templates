@@ -14,6 +14,7 @@ variable "github_owner" {
 }
 
 variable "template_repo_name" {
+  default     = ""
   type        = string
   description = "The name of the source template repository on GitHub"
 }
@@ -145,4 +146,23 @@ variable "cloudflare_account_id" {
 variable "cloudflare_zone_id" {
   type        = string
   description = "The Cloudflare Zone ID of your domain (e.g., 3istor.com)"
+}
+
+variable "repository_mode" {
+  type        = string
+  default     = "create"
+  description = "Use existing to attach a portal-validated source without managing its GitHub resources."
+  validation {
+    condition     = contains(["create", "existing"], var.repository_mode)
+    error_message = "repository_mode must be create or existing."
+  }
+}
+
+variable "existing_repository_url" {
+  type    = string
+  default = ""
+  validation {
+    condition     = var.repository_mode != "existing" || can(regex("^https://github\\.com/[A-Za-z0-9-]+/[A-Za-z0-9_.-]+$", var.existing_repository_url))
+    error_message = "Existing mode requires the original HTTPS GitHub repository URL."
+  }
 }

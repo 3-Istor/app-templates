@@ -58,3 +58,21 @@ terraform destroy \
     -var="cloudflare_account_id=fixme" \
     -var="cloudflare_zone_id=fixme"
 ```
+# Import d’un repository existant
+
+Le module accepte `repository_mode = "existing"` et
+`existing_repository_url = "https://github.com/owner/repository"`.
+Ce mode réutilise un projet déjà provisionné et un repo préparé par la CI centrale
+CNP. CMP crée les `tfvars` dans une copie isolée du module, après validation des
+permissions et des scans.
+
+En mode import, les ressources GitHub qui créent le repo, ses fichiers, le workflow
+et le secret Discord ont un `count` de zéro. Le provisioner de suppression des
+packages GHCR a aussi un `count` de zéro. Le repo source et ses packages ne sont
+donc pas gérés par le cycle Terraform de cette application.
+
+Le mode par défaut reste `create` pour le catalogue. Les blocs `moved` conservent
+les adresses des ressources déjà présentes dans les anciens states.
+
+Tests sans cloud réel : `terraform init -backend=false`, `terraform validate`,
+puis `terraform test`. Les trois scénarios utilisent des fournisseurs simulés.
