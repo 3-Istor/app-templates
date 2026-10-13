@@ -23,4 +23,3 @@ moved {
   from = null_resource.delete_ghcr_packages
   to   = null_resource.delete_ghcr_packages[0]
 }
-
