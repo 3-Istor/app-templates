@@ -279,6 +279,10 @@ resource "keycloak_user" "tenant_admin" {
     value     = random_password.tenant_admin_pwd.result
     temporary = false
   }
+
+  # Keycloak 26.5 answers 500 (NPE in UserCacheManager.fullUserInvalidation) when a user is
+  # created while the realm's first identity provider is being added.
+  depends_on = [keycloak_oidc_identity_provider.platform_idp]
 }
 
 # Grant realm-admin rights to the tenant admin
