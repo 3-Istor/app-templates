@@ -13,7 +13,7 @@ Ensure you have sourced your `admin-openrc.sh` before running these commands.
 
 ```bash
 terraform init \
-    -backend-config="bucket=3-istor-tf-infra-aws" \
+    -backend-config="bucket=istor-cnp-tfstate-757826" \
     -backend-config="key=apps/global-test-01/terraform.tfstate" \
     -backend-config="region=eu-west-3" \
     -backend-config="encrypt=true"

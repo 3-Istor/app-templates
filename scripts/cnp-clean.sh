@@ -34,7 +34,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 readonly SCRIPT_DIR REPO_ROOT
 
 readonly CLOUDS=(onprem aws gcp)
-readonly BUCKET="${TF_BACKEND_S3_BUCKET:-3-istor-tf-infra-aws}"
+readonly BUCKET="${TF_BACKEND_S3_BUCKET:-istor-cnp-tfstate-757826}"
 readonly REGION="${TF_BACKEND_AWS_REGION:-eu-west-3}"
 readonly REGISTRY_REPO="${CNP_REGISTRY_REPO:-3-Istor/cnp-projects}"
 readonly REGISTRY_PREFIX="registry/projects"

@@ -1,5 +1,5 @@
 {
-  "enabled": true,
+  "enabled": false,
   "id": "aws-nginx",
   "name": "Nginx Website (AWS)",
   "description": "Deploy a static Nginx website on AWS using an Auto Scaling Group.",
