@@ -20,7 +20,7 @@ We use the AWS S3 bucket to store the state, ensuring consistency across environ
 
 ```bash
 terraform init \
-    -backend-config="bucket=3-istor-tf-infra-aws" \
+    -backend-config="bucket=istor-cnp-tfstate-757826" \
     -backend-config="key=apps/hybrid-test-01/terraform.tfstate" \
     -backend-config="region=eu-west-3" \
     -backend-config="encrypt=true"

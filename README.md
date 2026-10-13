@@ -54,7 +54,7 @@ Configurer les accès OpenStack/AWS avant de démarrer. Le socle et les procédu
 2.  **Initialize the backend dynamically (S3 State Lock):**
     ```bash
     terraform init \
-      -backend-config="bucket=3-istor-tf-infra-aws" \
+      -backend-config="bucket=istor-cnp-tfstate-757826" \
       -backend-config="key=apps/test-manuelle-01/terraform.tfstate" \
       -backend-config="region=eu-west-3" \
       -backend-config="encrypt=true"
