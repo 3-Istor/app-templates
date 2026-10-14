@@ -250,6 +250,7 @@ resource "null_resource" "delete_ghcr_packages" {
 
   provisioner "local-exec" {
     when    = destroy
+    interpreter = ["/bin/bash", "-c"]
     command = <<EOT
       #!/bin/bash
       set -uo pipefail
