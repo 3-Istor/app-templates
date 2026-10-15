@@ -64,6 +64,13 @@ resources:
     cpu: "250m"
     memory: "256Mi"
 
+release:
+  # rolling | canary. Switch from the CMP Release tab, or here.
+  strategy: rolling
+  preset: safe
+  smoke:
+    path: "/"
+
 monitoring:
   enabled: true
   path: "/"
