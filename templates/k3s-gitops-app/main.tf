@@ -10,8 +10,8 @@ locals {
   # project-bootstrap, which is where cloud resources are actually created.
   cloud_profile = {
     onprem = { storage_class = "local-path" }
-    aws    = { storage_class = "gp3" }
-    gcp    = { storage_class = "standard-rwo" }
+    aws    = { storage_class = "local-path" } # node disk, lost on down, zero cost
+    gcp    = { storage_class = "local-path" } # node disk, lost on down, zero cost
   }
   storage_class = local.cloud_profile[var.target_cloud].storage_class
 
@@ -186,20 +186,10 @@ resource "vault_kv_secret_v2" "app_registry" {
   })
 }
 
-# Vault auth role for this app's secrets.
-#
-# One Kubernetes auth mount per cluster (D-07): a single mount is configured for
-# the on-prem API server's token issuer and CA, and a second cluster's service
-# account tokens will not validate against it.
+# Vault auth role for this app, on the auth mount of the project's cloud (D-07).
 resource "vault_kubernetes_auth_backend_role" "app_role" {
-  # D-07 is about the mount, not the name: one mount per cluster, because a
-  # mount is tied to one API server's token issuer/CA. Today there is one
-  # cluster (on-prem), so its vault-secrets-operator has one fixed
-  # VAULT_KUBERNETES_PATH (auth/kubernetes) — the role has to live there, not
-  # under a cloud-suffixed mount nothing authenticates against. Naming the
-  # mount per-cloud only becomes correct once a second cluster (and its own
-  # operator instance) actually exists.
-  backend                          = "kubernetes"
+  # One auth mount per cluster; the aws/gcp mounts are created by the platform stack.
+  backend                          = var.target_cloud == "onprem" ? "kubernetes" : "kubernetes-${var.target_cloud}"
   role_name                        = "${var.project_name}-${var.app_name}-role"
   bound_service_account_names      = ["vault-secrets-operator"]
   bound_service_account_namespaces = ["vault-secrets-operator"]
