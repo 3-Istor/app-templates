@@ -58,3 +58,15 @@ terraform destroy \
     -var="cloudflare_account_id=fixme" \
     -var="cloudflare_zone_id=fixme"
 ```
+
+## 5. Staging environment (`staging/`)
+
+A separate root module, applied by the CMP when an app opts into staging and
+destroyed when it opts out. State key: `cnp/projects/<project>/<app>/staging`.
+
+It creates what staging must not share with prod: the OIDC client
+`cnp-<project>-<app>-stg`, the Vault secrets under `<app>/staging`, a Vault
+policy and role that can read only that subtree, and the CNAME
+`<app>-<project>-staging`. The namespace, tunnel route and Argo CD
+Applications follow from the registry record, the `deploy/env/` files from the
+CMP. It needs the same variables as the parent module, minus the GitHub ones.
