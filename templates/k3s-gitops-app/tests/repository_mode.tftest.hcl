@@ -56,3 +56,24 @@ run "missing_import_url_is_rejected" {
   }
   expect_failures = [var.existing_repository_url]
 }
+
+run "runtime_secrets_are_selected_without_managing_the_source_path" {
+  command = apply
+  variables {
+    repository_mode         = "existing"
+    existing_repository_url = "https://github.com/example/original-repo"
+    runtime_secret_keys     = ["APP_SECRET"]
+  }
+  override_data {
+    target = data.vault_kv_secret_v2.application_runtime[0]
+    values = { data = { APP_SECRET = "test-only", UNREQUESTED = "not-for-this-app" } }
+  }
+  assert {
+    condition     = jsondecode(nonsensitive(vault_kv_secret_v2.app_secrets.data_json))["APP_SECRET"] == "test-only" && !contains(keys(jsondecode(nonsensitive(vault_kv_secret_v2.app_secrets.data_json))), "UNREQUESTED")
+    error_message = "Only explicitly requested Vault keys may reach the application Secret."
+  }
+  assert {
+    condition     = data.vault_kv_secret_v2.application_runtime[0].name == "web/runtime"
+    error_message = "Runtime configuration must be read from this application's own path."
+  }
+}

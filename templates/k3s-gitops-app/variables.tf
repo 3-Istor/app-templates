@@ -166,3 +166,13 @@ variable "existing_repository_url" {
     error_message = "Existing mode requires the original HTTPS GitHub repository URL."
   }
 }
+
+variable "runtime_secret_keys" {
+  type        = list(string)
+  default     = []
+  description = "Application keys read from project-<project>/<app>/runtime in Vault; values never come from Git or the CI build job."
+  validation {
+    condition     = length(var.runtime_secret_keys) <= 50 && length(distinct(var.runtime_secret_keys)) == length(var.runtime_secret_keys) && alltrue([for key in var.runtime_secret_keys : can(regex("^[A-Z_][A-Z0-9_]{0,63}$", key))])
+    error_message = "Runtime secret keys must be unique uppercase environment names (at most 50)."
+  }
+}

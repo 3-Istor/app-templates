@@ -150,6 +150,12 @@ resource "random_password" "db_password" {
 # secrets operator syncs it into the namespace, keycloak-config-cli creates the
 # client with that exact secret, and Envoy's SecurityPolicy reads the same
 # Kubernetes Secret.
+data "vault_kv_secret_v2" "application_runtime" {
+  count = length(var.runtime_secret_keys) > 0 ? 1 : 0
+  mount = "project-${var.project_name}"
+  name  = "${var.app_name}/runtime"
+}
+
 resource "vault_kv_secret_v2" "app_secrets" {
   mount               = "project-${var.project_name}"
   name                = var.app_name
@@ -163,11 +169,13 @@ resource "vault_kv_secret_v2" "app_secrets" {
     }
   }
 
-  data_json = jsonencode({
+  data_json = jsonencode(merge({
     username      = "app"
     password      = random_password.db_password.result
     client-secret = keycloak_openid_client.app_client.client_secret
-  })
+    }, length(var.runtime_secret_keys) > 0 ? {
+    for key in var.runtime_secret_keys : key => data.vault_kv_secret_v2.application_runtime[0].data[key]
+  } : {}))
 }
 
 # The GHCR pull secret. Used to be written straight into the app namespace's
