@@ -8,7 +8,7 @@ cd templates/k3s-project-bootstrap
 export AWS_PROFILE="3-istor"
 
 terraform init \
-    -backend-config="bucket=3-istor-tf-infra-aws" \
+    -backend-config="bucket=istor-cnp-tfstate-757826" \
     -backend-config="key=cnp/k3s-project-bootstrap/sandbox/project.tfstate" \
     -backend-config="region=eu-west-3" \
     -backend-config="encrypt=true"

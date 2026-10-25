@@ -8,7 +8,7 @@ cd templates/k3s-gitops-app
 export AWS_PROFILE="3-istor"
 
 terraform init \
-    -backend-config="bucket=3-istor-tf-infra-aws" \
+    -backend-config="bucket=istor-cnp-tfstate-757826" \
     -backend-config="key=cnp/k3s-gitops-app/sandbox/my-app-v1.tfstate" \
     -backend-config="region=eu-west-3" \
     -backend-config="encrypt=true"
@@ -76,3 +76,15 @@ les adresses des ressources déjà présentes dans les anciens states.
 
 Tests sans cloud réel : `terraform init -backend=false`, `terraform validate`,
 puis `terraform test`. Les trois scénarios utilisent des fournisseurs simulés.
+
+## 5. Staging environment (`staging/`)
+
+A separate root module, applied by the CMP when an app opts into staging and
+destroyed when it opts out. State key: `cnp/projects/<project>/<app>/staging`.
+
+It creates what staging must not share with prod: the OIDC client
+`cnp-<project>-<app>-stg`, the Vault secrets under `<app>/staging`, a Vault
+policy and role that can read only that subtree, and the CNAME
+`<app>-<project>-staging`. The namespace, tunnel route and Argo CD
+Applications follow from the registry record, the `deploy/env/` files from the
+CMP. It needs the same variables as the parent module, minus the GitHub ones.

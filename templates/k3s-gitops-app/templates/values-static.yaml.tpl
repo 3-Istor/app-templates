@@ -52,11 +52,19 @@ auth:
   realm: "${project_name}"
   clientId: "cnp-${project_name}-${app_name}"
 
+# A static site has nothing to store. Enable it if the app grows a backend.
 db:
-  enabled: true
+  enabled: false
   name: ${app_name}
   storage: "1Gi"
   storageClass: "${storage_class}"
+
+release:
+  # rolling | canary. Switch from the CMP Release tab, or here.
+  strategy: rolling
+  preset: safe
+  smoke:
+    path: "/"
 
 resources:
   requests:

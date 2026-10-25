@@ -45,6 +45,13 @@ db:
   storage: "1Gi"
   storageClass: "${storage_class}"
 
+# The image creates no tables itself (CNP migration standard v1): the platform
+# runs its migration entrypoint as a Job once the database is Ready and before
+# each new version starts. A failed migration keeps the running version.
+migrations:
+  enabled: true
+  command: ["/app/migrate"]
+
 monitoring:
   enabled: true
   path: "/health"

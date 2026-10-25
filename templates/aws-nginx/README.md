@@ -14,7 +14,7 @@ cd templates/aws-nginx
 ## 2. Initialize
 ```bash
 terraform init \
-    -backend-config="bucket=3-istor-tf-infra-aws" \
+    -backend-config="bucket=istor-cnp-tfstate-757826" \
     -backend-config="key=apps/nginx-test-01/terraform.tfstate" \
     -backend-config="region=eu-west-3" \
     -backend-config="encrypt=true"
