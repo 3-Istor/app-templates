@@ -75,7 +75,7 @@ Le mode par défaut reste `create` pour le catalogue. Les blocs `moved` conserve
 les adresses des ressources déjà présentes dans les anciens states.
 
 Tests sans cloud réel : `terraform init -backend=false`, `terraform validate`,
-puis `terraform test`. Les trois scénarios utilisent des fournisseurs simulés.
+puis `terraform test`. Les quatre scénarios utilisent des fournisseurs simulés.
 
 ## 5. Staging environment (`staging/`)
 
