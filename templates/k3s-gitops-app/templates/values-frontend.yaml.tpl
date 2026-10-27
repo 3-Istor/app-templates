@@ -18,6 +18,10 @@ secrets:
   vaultPath: "project-${project_name}/${app_name}"
   vaultRole: "${project_name}-${app_name}-role"
 
+# The backend release creates app-registry; the frontend only references it below.
+registrySecret:
+  create: false
+
 env:
   - name: BACKEND_HOST
     value: "http://${project_name}-${app_name}-backend-cnp-generic-app:8000"
