@@ -4,7 +4,7 @@
     "config:recommended",
     ":timezone(Europe/Paris)"
   ],
-  "minimumReleaseAge": "14 days",
+  "minimumReleaseAge": "7 days",
   "terraform": {
     "managerFilePatterns": [
       "/.*\\.tf$/"
@@ -12,11 +12,41 @@
   },
   "packageRules": [
     {
-      "matchUpdateTypes": ["minor", "patch"],
-      "matchDatasources": ["terraform-provider"],
+      "matchUpdateTypes": [
+        "minor",
+        "patch"
+      ],
+      "matchDatasources": [
+        "terraform-provider"
+      ],
       "groupName": "Terraform Providers (Minor & Patch)"
+    },
+    {
+      "description": "Action pins of the security workflow written into each new app: kept current so a new app starts with no Dependabot PR.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchFileNames": [
+        "templates/**"
+      ],
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "digest"
+      ],
+      "schedule": [
+        "before 5am"
+      ],
+      "automerge": true
     }
   ],
-  "schedule": ["before 5am on monday"],
-  "prConcurrentLimit": 5
+  "schedule": [
+    "before 5am on monday"
+  ],
+  "prConcurrentLimit": 5,
+  "github-actions": {
+    "managerFilePatterns": [
+      "/^templates/.+/security\\.ya?ml$/"
+    ]
+  }
 }
