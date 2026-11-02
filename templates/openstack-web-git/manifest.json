@@ -1,5 +1,5 @@
 {
-    "enabled": true,
+    "enabled": false,
   "id": "openstack-web-git",
   "name": "Git Website (OpenStack)",
   "description": "Deploy a static website from a Git repository using Nginx on OpenStack.",

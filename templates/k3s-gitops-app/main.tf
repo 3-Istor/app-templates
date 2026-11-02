@@ -16,6 +16,8 @@ locals {
   }
   storage_class = local.cloud_profile[var.target_cloud].storage_class
 
+  image_tag = "sha-${substr(terraform_data.initial_commit.output, 0, 7)}"
+
   # Uniform markers, per D-13. "Find everything belonging to project X on cloud
   # Y" has to be a query rather than guesswork.
   marker = "cnp.project=${var.project_name} cnp.cloud=${var.target_cloud} cnp.env=${var.environment}"
@@ -37,6 +39,28 @@ resource "github_repository" "app" {
   }
 }
 
+# main right after creation is the template's "Initial commit": its push is the
+# CI run that publishes sha-<7 chars>. depends_on defers the read to apply.
+data "github_branch" "main" {
+  repository = github_repository.app.name
+  branch     = "main"
+  depends_on = [github_repository.app]
+}
+
+# Keeps that first sha: main moves on, and a re-apply would read its new head.
+resource "terraform_data" "initial_commit" {
+  input = data.github_branch.main.sha
+
+  lifecycle {
+    ignore_changes = [input]
+    precondition {
+      # The provider returns an empty sha, not an error, while main does not exist yet.
+      condition     = data.github_branch.main.sha != ""
+      error_message = "main of ${var.app_name} cannot be read yet: retry the deployment."
+    }
+  }
+}
+
 resource "github_repository_file" "values_backend" {
   count      = local.app_type == "fullstack" ? 1 : 0
   repository = github_repository.app.name
@@ -47,6 +71,7 @@ resource "github_repository_file" "values_backend" {
     app_name      = lower(var.app_name)
     project_name  = var.project_name
     storage_class = local.storage_class
+    image_tag     = local.image_tag
     db_backup     = local.cloud_profile[var.target_cloud].db_backup
   })
   commit_message      = "chore: bootstrap cnp backend variables [skip ci]"
@@ -65,6 +90,7 @@ resource "github_repository_file" "values_frontend" {
       project_name  = var.project_name
       hostname      = local.hostname
       storage_class = local.storage_class
+      image_tag     = local.image_tag
     }
   )
   commit_message      = "chore: bootstrap cnp application variables [skip ci]"
@@ -80,6 +106,8 @@ resource "github_repository_file" "security_workflow" {
   content             = file("${path.module}/security.yml")
   commit_message      = "chore: add cnp security scans [skip ci]"
   overwrite_on_create = true
+  # This [skip ci] commit must land after the sha is read, never be the one read.
+  depends_on = [terraform_data.initial_commit]
 }
 
 # project-bootstrap writes this secret; the workflow skips the Discord step when

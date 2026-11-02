@@ -1,5 +1,5 @@
 {
-  "enabled": true,
+  "enabled": false,
   "id": "openstack-nginx",
   "name": "Nginx Website (OpenStack)",
   "description": "Deploy a static website using Nginx on OpenStack.",
