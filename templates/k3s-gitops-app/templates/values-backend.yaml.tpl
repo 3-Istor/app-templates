@@ -44,6 +44,8 @@ db:
   name: ${app_name}
   storage: "1Gi"
   storageClass: "${storage_class}"
+  backup:
+    enabled: ${db_backup}
 
 # The image creates no tables itself (CNP migration standard v1): the platform
 # runs its migration entrypoint as a Job once the database is Ready and before
