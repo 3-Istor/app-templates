@@ -8,10 +8,11 @@ locals {
   # list because the module no longer creates cloud resources — the per-capability
   # split (network, compute, database, storage, exposure) lives in
   # project-bootstrap, which is where cloud resources are actually created.
+  # db_backup: the backup bucket is an ObjectBucketClaim only Rook (on-prem) serves.
   cloud_profile = {
-    onprem = { storage_class = "local-path" }
-    aws    = { storage_class = "local-path" } # node disk, lost on down, zero cost
-    gcp    = { storage_class = "local-path" } # node disk, lost on down, zero cost
+    onprem = { storage_class = "local-path", db_backup = true }
+    aws    = { storage_class = "local-path", db_backup = false } # node disk, lost on down, zero cost
+    gcp    = { storage_class = "local-path", db_backup = false } # node disk, lost on down, zero cost
   }
   storage_class = local.cloud_profile[var.target_cloud].storage_class
 
@@ -71,6 +72,7 @@ resource "github_repository_file" "values_backend" {
     project_name  = var.project_name
     storage_class = local.storage_class
     image_tag     = local.image_tag
+    db_backup     = local.cloud_profile[var.target_cloud].db_backup
   })
   commit_message      = "chore: bootstrap cnp backend variables [skip ci]"
   overwrite_on_create = true
