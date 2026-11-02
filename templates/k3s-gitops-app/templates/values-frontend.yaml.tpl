@@ -18,9 +18,19 @@ secrets:
   vaultPath: "project-${project_name}/${app_name}"
   vaultRole: "${project_name}-${app_name}-role"
 
+# The backend release creates app-registry; the frontend only references it below.
+registrySecret:
+  create: false
+
 env:
+  # nginx's resolver ignores DNS search domains, so the backend name must be fully
+  # qualified. The namespace comes from the pod: staging runs in <ns>-stg with the same Service name.
+  - name: POD_NAMESPACE
+    valueFrom:
+      fieldRef:
+        fieldPath: metadata.namespace
   - name: BACKEND_HOST
-    value: "http://${project_name}-${app_name}-backend-cnp-generic-app:8000"
+    value: "http://${project_name}-${app_name}-backend-cnp-generic-app.$(POD_NAMESPACE).svc.cluster.local:8000"
 
 imagePullSecrets:
   - name: app-registry
