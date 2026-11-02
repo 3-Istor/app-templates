@@ -3,7 +3,8 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/${github_owner}/${app_name}/frontend
-  tag: "latest"
+  # Built by the repo's first CI run; Image Updater then writes released versions.
+  tag: "${image_tag}"
 
 service:
   enabled: true
