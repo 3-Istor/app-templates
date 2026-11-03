@@ -3,6 +3,7 @@
 | Script | What it does |
 | --- | --- |
 | `cnp-clean.sh` | Destroys everything CNP provisioned for a project or a whole cloud, and reports what is left. See `--help`. |
+| `test-cnp-clean.sh` | Offline test (stubbed `gh`) that `cnp-clean.sh` skips deletion-protected projects. Run `bash scripts/test-cnp-clean.sh`. |
 | `secrets.sh` | Provider credentials. **Gitignored** — create it locally, never commit it. |
 
 ## On `cleanup-cnp-demo.sh`
