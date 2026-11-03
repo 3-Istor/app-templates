@@ -17,7 +17,7 @@ locals {
   }
   storage_class = local.cloud_profile[var.target_cloud].storage_class
 
-  image_tag = "sha-${substr(terraform_data.initial_commit.output, 0, 7)}"
+  image_tag = local.create_repository ? "sha-${substr(terraform_data.initial_commit[0].output, 0, 7)}" : ""
 
   # Uniform markers, per D-13. "Find everything belonging to project X on cloud
   # Y" has to be a query rather than guesswork.
@@ -44,20 +44,22 @@ resource "github_repository" "app" {
 # main right after creation is the template's "Initial commit": its push is the
 # CI run that publishes sha-<7 chars>. depends_on defers the read to apply.
 data "github_branch" "main" {
-  repository = github_repository.app.name
+  count      = local.create_repository ? 1 : 0
+  repository = github_repository.app[0].name
   branch     = "main"
   depends_on = [github_repository.app]
 }
 
 # Keeps that first sha: main moves on, and a re-apply would read its new head.
 resource "terraform_data" "initial_commit" {
-  input = data.github_branch.main.sha
+  count = local.create_repository ? 1 : 0
+  input = data.github_branch.main[0].sha
 
   lifecycle {
     ignore_changes = [input]
     precondition {
       # The provider returns an empty sha, not an error, while main does not exist yet.
-      condition     = data.github_branch.main.sha != ""
+      condition     = data.github_branch.main[0].sha != ""
       error_message = "main of ${var.app_name} cannot be read yet: retry the deployment."
     }
   }

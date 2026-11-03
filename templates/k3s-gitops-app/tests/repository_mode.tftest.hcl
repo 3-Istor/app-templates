@@ -29,7 +29,7 @@ run "import_never_manages_source_or_packages" {
     existing_repository_url = "https://github.com/example/original-repo"
   }
   assert {
-    condition     = length(github_repository.app) == 0 && length(github_repository_file.values_frontend) == 0 && length(github_repository_file.values_backend) == 0 && length(github_repository_file.security_workflow) == 0 && length(github_actions_secret.discord_webhook_url) == 0 && length(null_resource.delete_ghcr_packages) == 0
+    condition     = length(github_repository.app) == 0 && length(data.github_branch.main) == 0 && length(terraform_data.initial_commit) == 0 && length(github_repository_file.values_frontend) == 0 && length(github_repository_file.values_backend) == 0 && length(github_repository_file.security_workflow) == 0 && length(github_actions_secret.discord_webhook_url) == 0 && length(null_resource.delete_ghcr_packages) == 0
     error_message = "Import must not create, edit or destroy source GitHub resources or existing packages."
   }
   assert {

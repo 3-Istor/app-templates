@@ -23,3 +23,9 @@ moved {
   from = null_resource.delete_ghcr_packages
   to   = null_resource.delete_ghcr_packages[0]
 }
+
+# Preserve the catalog initial SHA when existing mode makes the read optional.
+moved {
+  from = terraform_data.initial_commit
+  to   = terraform_data.initial_commit[0]
+}
