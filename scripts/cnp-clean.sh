@@ -11,6 +11,9 @@
 # and after — a resource created by hand is not found by the destroy phase, but
 # it is found by the inventory if it carries the markers.
 #
+# Projects with spec.deletionProtection in the registry are skipped in every
+# scope, dry-run included; an unreadable record counts as protected.
+#
 #   ./cnp-clean.sh --project sandbox                 # show what would be destroyed
 #   ./cnp-clean.sh --project sandbox --yes           # destroy it
 #   ./cnp-clean.sh --cloud aws --yes                 # retire a cloud
@@ -196,6 +199,43 @@ cloud_of_project() {
   done
 
   return 1
+}
+
+# Prints why and returns 0 when the project must not be destroyed, 1 otherwise.
+# Only a 404 means "no record"; any other registry failure fails closed.
+project_protected() {
+  local project="$1" out yaml
+  if out=$(gh api "repos/$REGISTRY_REPO/contents/$REGISTRY_PREFIX/$project.yaml" \
+             --jq '.content' 2>&1); then
+    if yaml=$(printf '%s' "$out" | base64 -d 2>/dev/null); then
+      # Decoded to a variable first: grep -q closing the pipe early trips pipefail.
+      # Value is case-insensitive and may carry a trailing comment (hand edits).
+      if grep -Eiq '^[[:space:]]+deletionProtection:[[:space:]]*true[[:space:]]*(#.*)?$' <<<"$yaml"; then
+        echo "deletion protection"
+        return 0
+      fi
+      return 1
+    fi
+  else
+    case "$out" in *"HTTP 404"*) return 1 ;; esac
+  fi
+  echo "registry record unreadable, assuming deletion protection"
+}
+
+# stdin "<cloud> <project>" lines -> stdout, minus protected projects (reported on stderr).
+keep_unprotected() {
+  local cloud project reason
+  # A token that cannot see the private registry gets 404 on every record, which
+  # would read as "not protected" for everything.
+  gh api "repos/$REGISTRY_REPO" >/dev/null 2>&1 \
+    || die "cannot read the registry $REGISTRY_REPO: refusing to destroy anything"
+  while read -r cloud project; do
+    if reason=$(project_protected "$project"); then
+      warn "skipped: $project ($reason)"
+    else
+      printf '%s %s\n' "$cloud" "$project"
+    fi
+  done
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -424,7 +464,7 @@ main() {
   load_secrets
 
   local targets
-  targets=$(collect_targets)
+  targets=$(collect_targets | keep_unprotected)
 
   if [ -z "$targets" ]; then
     log "Nothing in scope. Nothing to do."
@@ -466,4 +506,5 @@ main() {
   step "done"
 }
 
-main "$@"
+# Sourceable for tests: only run when executed.
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then main "$@"; fi
