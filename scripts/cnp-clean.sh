@@ -209,7 +209,8 @@ project_protected() {
              --jq '.content' 2>&1); then
     if yaml=$(printf '%s' "$out" | base64 -d 2>/dev/null); then
       # Decoded to a variable first: grep -q closing the pipe early trips pipefail.
-      if grep -Eq '^[[:space:]]+deletionProtection:[[:space:]]*true[[:space:]]*$' <<<"$yaml"; then
+      # Value is case-insensitive and may carry a trailing comment (hand edits).
+      if grep -Eiq '^[[:space:]]+deletionProtection:[[:space:]]*true[[:space:]]*(#.*)?$' <<<"$yaml"; then
         echo "deletion protection"
         return 0
       fi

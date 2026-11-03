@@ -13,6 +13,8 @@ registry_up=true
 gh() {
   case "$2" in
     */iot.yaml)     printf 'spec:\n  targetCloud: onprem\n  deletionProtection: true\n' | base64 ;;
+    */commented.yaml) printf 'spec:\n  deletionProtection: true  # keep\n' | base64 ;;
+    */upper.yaml)   printf 'spec:\n  deletionProtection: True\n' | base64 ;;
     */demo.yaml)    printf 'spec:\n  targetCloud: onprem\n' | base64 ;;
     */missing.yaml) echo 'gh: Not Found (HTTP 404)' >&2; return 1 ;;
     */broken.yaml)  echo 'gh: Internal Server Error (HTTP 500)' >&2; return 1 ;;
@@ -24,9 +26,11 @@ gh() {
 
 source "$(dirname "${BASH_SOURCE[0]}")/cnp-clean.sh"
 
-out=$(printf 'onprem iot\nonprem demo\nonprem missing\nonprem broken\n' | keep_unprotected 2>"$err") || fail "keep_unprotected errored"
+out=$(printf 'onprem iot\nonprem commented\nonprem upper\nonprem demo\nonprem missing\nonprem broken\n' | keep_unprotected 2>"$err") || fail "keep_unprotected errored"
 [ "$out" = $'onprem demo\nonprem missing' ] || fail "kept: $out"
 grep -q 'skipped: iot (deletion protection)' "$err" || fail "iot not reported"
+grep -q 'skipped: commented (deletion protection)' "$err" || fail "commented not reported"
+grep -q 'skipped: upper (deletion protection)' "$err" || fail "upper not reported"
 grep -q 'skipped: broken (registry record unreadable' "$err" || fail "broken not reported"
 
 # Registry unreachable (e.g. token without access): refuse everything, print nothing.
