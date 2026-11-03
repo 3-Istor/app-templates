@@ -3,7 +3,8 @@ replicaCount: 1
 
 image:
   repository: ghcr.io/${github_owner}/${app_name}/backend
-  tag: "latest"
+  # Built by the repo's first CI run; Image Updater then writes released versions.
+  tag: "${image_tag}"
 
 service:
   enabled: true
@@ -44,6 +45,8 @@ db:
   name: ${app_name}
   storage: "1Gi"
   storageClass: "${storage_class}"
+  backup:
+    enabled: ${db_backup}
 
 # The image creates no tables itself (CNP migration standard v1): the platform
 # runs its migration entrypoint as a Job once the database is Ready and before

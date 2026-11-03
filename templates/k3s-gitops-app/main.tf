@@ -9,12 +9,15 @@ locals {
   # list because the module no longer creates cloud resources — the per-capability
   # split (network, compute, database, storage, exposure) lives in
   # project-bootstrap, which is where cloud resources are actually created.
+  # db_backup: the backup bucket is an ObjectBucketClaim only Rook (on-prem) serves.
   cloud_profile = {
-    onprem = { storage_class = "local-path" }
-    aws    = { storage_class = "local-path" } # node disk, lost on down, zero cost
-    gcp    = { storage_class = "local-path" } # node disk, lost on down, zero cost
+    onprem = { storage_class = "local-path", db_backup = true }
+    aws    = { storage_class = "local-path", db_backup = false } # node disk, lost on down, zero cost
+    gcp    = { storage_class = "local-path", db_backup = false } # node disk, lost on down, zero cost
   }
   storage_class = local.cloud_profile[var.target_cloud].storage_class
+
+  image_tag = "sha-${substr(terraform_data.initial_commit.output, 0, 7)}"
 
   # Uniform markers, per D-13. "Find everything belonging to project X on cloud
   # Y" has to be a query rather than guesswork.
@@ -38,6 +41,28 @@ resource "github_repository" "app" {
   }
 }
 
+# main right after creation is the template's "Initial commit": its push is the
+# CI run that publishes sha-<7 chars>. depends_on defers the read to apply.
+data "github_branch" "main" {
+  repository = github_repository.app.name
+  branch     = "main"
+  depends_on = [github_repository.app]
+}
+
+# Keeps that first sha: main moves on, and a re-apply would read its new head.
+resource "terraform_data" "initial_commit" {
+  input = data.github_branch.main.sha
+
+  lifecycle {
+    ignore_changes = [input]
+    precondition {
+      # The provider returns an empty sha, not an error, while main does not exist yet.
+      condition     = data.github_branch.main.sha != ""
+      error_message = "main of ${var.app_name} cannot be read yet: retry the deployment."
+    }
+  }
+}
+
 resource "github_repository_file" "values_backend" {
   count      = local.create_repository && local.app_type == "fullstack" ? 1 : 0
   repository = github_repository.app[0].name
@@ -48,6 +73,8 @@ resource "github_repository_file" "values_backend" {
     app_name      = lower(var.app_name)
     project_name  = var.project_name
     storage_class = local.storage_class
+    image_tag     = local.image_tag
+    db_backup     = local.cloud_profile[var.target_cloud].db_backup
   })
   commit_message      = "chore: bootstrap cnp backend variables [skip ci]"
   overwrite_on_create = true
@@ -66,6 +93,7 @@ resource "github_repository_file" "values_frontend" {
       project_name  = var.project_name
       hostname      = local.hostname
       storage_class = local.storage_class
+      image_tag     = local.image_tag
     }
   )
   commit_message      = "chore: bootstrap cnp application variables [skip ci]"
@@ -82,6 +110,8 @@ resource "github_repository_file" "security_workflow" {
   content             = file("${path.module}/security.yml")
   commit_message      = "chore: add cnp security scans [skip ci]"
   overwrite_on_create = true
+  # This [skip ci] commit must land after the sha is read, never be the one read.
+  depends_on = [terraform_data.initial_commit]
 }
 
 # project-bootstrap writes this secret; the workflow skips the Discord step when
