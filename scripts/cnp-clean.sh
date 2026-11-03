@@ -224,6 +224,10 @@ project_protected() {
 # stdin "<cloud> <project>" lines -> stdout, minus protected projects (reported on stderr).
 keep_unprotected() {
   local cloud project reason
+  # A token that cannot see the private registry gets 404 on every record, which
+  # would read as "not protected" for everything.
+  gh api "repos/$REGISTRY_REPO" >/dev/null 2>&1 \
+    || die "cannot read the registry $REGISTRY_REPO: refusing to destroy anything"
   while read -r cloud project; do
     if reason=$(project_protected "$project"); then
       warn "skipped: $project ($reason)"
