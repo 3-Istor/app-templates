@@ -347,6 +347,10 @@ resource "keycloak_oidc_identity_provider" "platform_idp" {
   client_id         = keycloak_openid_client.tenant_broker_client.client_id
   client_secret     = keycloak_openid_client.tenant_broker_client.client_secret
   default_scopes    = "openid profile email"
+  # Keycloak 26.8+ blocks mappers from filling a group that carries admin roles unless this is on.
+  extra_config = {
+    allowAdminRoleMapping = "true"
+  }
 }
 
 
@@ -365,6 +369,13 @@ resource "keycloak_group" "tenant_project_members" {
 resource "keycloak_group" "tenant_project_admins" {
   realm_id = keycloak_realm.tenant_realm.id
   name     = "project-admins"
+}
+
+# Project admins open the realm console with their platform account.
+resource "keycloak_group_roles" "tenant_project_admins_realm_admin" {
+  realm_id = keycloak_realm.tenant_realm.id
+  group_id = keycloak_group.tenant_project_admins.id
+  role_ids = [data.keycloak_role.tenant_realm_admin_role.id]
 }
 
 # FORCE re-evaluates the claim at every broker login, so removing someone from

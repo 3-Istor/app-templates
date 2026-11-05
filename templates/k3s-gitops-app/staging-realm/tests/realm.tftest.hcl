@@ -32,4 +32,9 @@ run "names_the_staging_realm" {
     condition     = vault_kv_secret_v2.admin_creds.name == "keycloak-tenant-admin-staging"
     error_message = "the staging admin credentials must not overwrite the production ones"
   }
+
+  assert {
+    condition     = keycloak_oidc_identity_provider.platform.extra_config["allowAdminRoleMapping"] == "true"
+    error_message = "the broker must be allowed to fill project-admins, which carries realm-admin"
+  }
 }
