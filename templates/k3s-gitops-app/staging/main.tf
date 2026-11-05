@@ -25,6 +25,11 @@ resource "keycloak_openid_client" "staging_client" {
 
   valid_redirect_uris             = ["https://${local.hostname}/oauth2/callback"]
   valid_post_logout_redirect_uris = ["https://${local.hostname}/"]
+
+  # The CMP turns this on when the project opens customer sign-up; Terraform must not reset it.
+  lifecycle {
+    ignore_changes = [service_accounts_enabled]
+  }
 }
 
 resource "keycloak_openid_client_default_scopes" "staging_client_scopes" {
@@ -39,6 +44,11 @@ resource "keycloak_openid_client_default_scopes" "staging_client_scopes" {
     "roles",
     "web-origins",
   ]
+
+  # The CMP adds the organization and service_account scopes; this resource is authoritative and would drop them.
+  lifecycle {
+    ignore_changes = [default_scopes]
+  }
 }
 
 resource "random_password" "db_password" {

@@ -143,6 +143,11 @@ resource "keycloak_openid_client" "app_client" {
   valid_post_logout_redirect_uris = [
     "https://${local.hostname}/"
   ]
+
+  # The CMP turns this on when the project opens customer sign-up; Terraform must not reset it.
+  lifecycle {
+    ignore_changes = [service_accounts_enabled]
+  }
 }
 
 # The groups scope comes from project-bootstrap (tenant realm) or exists in the
@@ -159,6 +164,11 @@ resource "keycloak_openid_client_default_scopes" "app_client_scopes" {
     "roles",
     "web-origins",
   ]
+
+  # The CMP adds the organization and service_account scopes; this resource is authoritative and would drop them.
+  lifecycle {
+    ignore_changes = [default_scopes]
+  }
 }
 
 # ==============================================================================
@@ -269,9 +279,9 @@ resource "null_resource" "delete_ghcr_packages" {
   }
 
   provisioner "local-exec" {
-    when    = destroy
+    when        = destroy
     interpreter = ["/bin/bash", "-c"]
-    command = <<EOT
+    command     = <<EOT
       #!/bin/bash
       set -uo pipefail
 
