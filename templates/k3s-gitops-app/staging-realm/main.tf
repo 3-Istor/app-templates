@@ -13,6 +13,11 @@ resource "keycloak_realm" "staging" {
   registration_allowed = false
 
   login_theme = "keycloak-theme-kube-lab"
+
+  # The CMP enables Organizations when the project opens customer sign-up; later applies must not turn it off.
+  lifecycle {
+    ignore_changes = [organizations_enabled]
+  }
 }
 
 resource "keycloak_realm_events" "staging" {
