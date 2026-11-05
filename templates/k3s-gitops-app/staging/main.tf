@@ -44,6 +44,11 @@ resource "keycloak_openid_client_default_scopes" "staging_client_scopes" {
     "roles",
     "web-origins",
   ]
+
+  # The CMP adds the organization and service_account scopes; this resource is authoritative and would drop them.
+  lifecycle {
+    ignore_changes = [default_scopes]
+  }
 }
 
 resource "random_password" "db_password" {
