@@ -1,6 +1,7 @@
 locals {
-  app_type   = var.template_repo_name == "template-app-webapp-python-fastapi-react" ? "fullstack" : "static"
-  components = local.app_type == "fullstack" ? ["frontend", "backend"] : ["app"]
+  create_repository = var.repository_mode == "create"
+  app_type          = local.create_repository ? (var.template_repo_name == "template-app-webapp-python-fastapi-react" ? "fullstack" : "static") : "static"
+  components        = local.app_type == "fullstack" ? ["frontend", "backend"] : ["app"]
 
   hostname = "${var.app_name}-${var.project_name}.${var.domain}"
 
@@ -16,7 +17,7 @@ locals {
   }
   storage_class = local.cloud_profile[var.target_cloud].storage_class
 
-  image_tag = "sha-${substr(terraform_data.initial_commit.output, 0, 7)}"
+  image_tag = local.create_repository ? "sha-${substr(terraform_data.initial_commit[0].output, 0, 7)}" : ""
 
   # Uniform markers, per D-13. "Find everything belonging to project X on cloud
   # Y" has to be a query rather than guesswork.
@@ -28,6 +29,7 @@ locals {
 # ==============================================================================
 
 resource "github_repository" "app" {
+  count       = local.create_repository ? 1 : 0
   name        = var.app_name
   description = "Provisioned by CNP for Project ${var.project_name}"
   visibility  = "private"
@@ -42,28 +44,30 @@ resource "github_repository" "app" {
 # main right after creation is the template's "Initial commit": its push is the
 # CI run that publishes sha-<7 chars>. depends_on defers the read to apply.
 data "github_branch" "main" {
-  repository = github_repository.app.name
+  count      = local.create_repository ? 1 : 0
+  repository = github_repository.app[0].name
   branch     = "main"
   depends_on = [github_repository.app]
 }
 
 # Keeps that first sha: main moves on, and a re-apply would read its new head.
 resource "terraform_data" "initial_commit" {
-  input = data.github_branch.main.sha
+  count = local.create_repository ? 1 : 0
+  input = data.github_branch.main[0].sha
 
   lifecycle {
     ignore_changes = [input]
     precondition {
       # The provider returns an empty sha, not an error, while main does not exist yet.
-      condition     = data.github_branch.main.sha != ""
+      condition     = data.github_branch.main[0].sha != ""
       error_message = "main of ${var.app_name} cannot be read yet: retry the deployment."
     }
   }
 }
 
 resource "github_repository_file" "values_backend" {
-  count      = local.app_type == "fullstack" ? 1 : 0
-  repository = github_repository.app.name
+  count      = local.create_repository && local.app_type == "fullstack" ? 1 : 0
+  repository = github_repository.app[0].name
   branch     = "main"
   file       = "deploy/values-backend.yaml"
   content = templatefile("${path.module}/templates/values-backend.yaml.tpl", {
@@ -79,7 +83,8 @@ resource "github_repository_file" "values_backend" {
 }
 
 resource "github_repository_file" "values_frontend" {
-  repository = github_repository.app.name
+  count      = local.create_repository ? 1 : 0
+  repository = github_repository.app[0].name
   branch     = "main"
   file       = local.app_type == "fullstack" ? "deploy/values-frontend.yaml" : "deploy/values.yaml"
   content = templatefile(
@@ -100,7 +105,8 @@ resource "github_repository_file" "values_frontend" {
 # Written by Terraform rather than carried by the template repos so every
 # generated repo gets the same scans whichever template it came from.
 resource "github_repository_file" "security_workflow" {
-  repository          = github_repository.app.name
+  count               = local.create_repository ? 1 : 0
+  repository          = github_repository.app[0].name
   branch              = "main"
   file                = ".github/workflows/security.yml"
   content             = file("${path.module}/security.yml")
@@ -113,14 +119,16 @@ resource "github_repository_file" "security_workflow" {
 # project-bootstrap writes this secret; the workflow skips the Discord step when
 # the repo secret is empty, so a missing value never breaks the scans.
 data "vault_kv_secret_v2" "discord" {
+  count = local.create_repository ? 1 : 0
   mount = "project-${var.project_name}"
   name  = "system/discord"
 }
 
 resource "github_actions_secret" "discord_webhook_url" {
-  repository      = github_repository.app.name
+  count           = local.create_repository ? 1 : 0
+  repository      = github_repository.app[0].name
   secret_name     = "DISCORD_WEBHOOK_URL"
-  plaintext_value = data.vault_kv_secret_v2.discord.data["DISCORD_WEBHOOK_URL"]
+  plaintext_value = data.vault_kv_secret_v2.discord[0].data["DISCORD_WEBHOOK_URL"]
 }
 
 # ==============================================================================
@@ -184,6 +192,12 @@ resource "random_password" "db_password" {
 # secrets operator syncs it into the namespace, keycloak-config-cli creates the
 # client with that exact secret, and Envoy's SecurityPolicy reads the same
 # Kubernetes Secret.
+data "vault_kv_secret_v2" "application_runtime" {
+  count = length(var.runtime_secret_keys) > 0 ? 1 : 0
+  mount = "project-${var.project_name}"
+  name  = "${var.app_name}/runtime"
+}
+
 resource "vault_kv_secret_v2" "app_secrets" {
   mount               = "project-${var.project_name}"
   name                = var.app_name
@@ -197,11 +211,13 @@ resource "vault_kv_secret_v2" "app_secrets" {
     }
   }
 
-  data_json = jsonencode({
+  data_json = jsonencode(merge({
     username      = "app"
     password      = random_password.db_password.result
     client-secret = keycloak_openid_client.app_client.client_secret
-  })
+    }, length(var.runtime_secret_keys) > 0 ? {
+    for key in var.runtime_secret_keys : key => data.vault_kv_secret_v2.application_runtime[0].data[key]
+  } : {}))
 }
 
 # The GHCR pull secret. Used to be written straight into the app namespace's
@@ -271,6 +287,7 @@ resource "cloudflare_dns_record" "app_cname" {
 # ==============================================================================
 
 resource "null_resource" "delete_ghcr_packages" {
+  count = local.create_repository ? 1 : 0
   triggers = {
     app_name     = var.app_name
     github_owner = var.github_owner
