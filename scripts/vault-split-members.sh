@@ -175,7 +175,7 @@ ensure_group() {
 
 ensure_alias() {
   local name="$1" accessor="$2" group_name="$3" group_id="$4" aliases alias_id current
-  aliases="$(api LIST identity/group-alias/id)"
+  aliases="$(api GET "identity/group-alias/id?list=true")"
   [[ -n "$aliases" ]] || aliases='{}'
   alias_id="$(jq -r --arg n "$name" --arg a "$accessor" \
     '(.data.key_info // {}) | to_entries[] | select(.value.name == $n and .value.mount_accessor == $a) | .key' \
