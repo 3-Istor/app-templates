@@ -27,10 +27,13 @@ terraform {
 }
 
 provider "keycloak" {
-  client_id = "admin-cli"
-  url       = var.keycloak_url
-  username  = var.keycloak_admin_username
-  password  = var.keycloak_admin_password
+  # The cmp-provisioner client (client credentials) when its secret is given,
+  # else the legacy master admin user.
+  client_id     = var.keycloak_client_secret != "" ? var.keycloak_client_id : "admin-cli"
+  client_secret = var.keycloak_client_secret != "" ? var.keycloak_client_secret : null
+  username      = var.keycloak_client_secret != "" ? null : var.keycloak_admin_username
+  password      = var.keycloak_client_secret != "" ? null : var.keycloak_admin_password
+  url           = var.keycloak_url
 }
 
 provider "vault" {

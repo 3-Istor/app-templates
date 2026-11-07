@@ -39,6 +39,20 @@ variable "keycloak_admin_username" {
 variable "keycloak_admin_password" {
   type      = string
   sensitive = true
+  default   = ""
+}
+
+variable "keycloak_client_id" {
+  type        = string
+  description = "Master realm client of the provisioner (client credentials, e.g. cmp-provisioner), used when keycloak_client_secret is set"
+  default     = ""
+}
+
+variable "keycloak_client_secret" {
+  type        = string
+  sensitive   = true
+  description = "Secret of keycloak_client_id; empty falls back to the admin user"
+  default     = ""
 }
 
 variable "keycloak_realm" {
