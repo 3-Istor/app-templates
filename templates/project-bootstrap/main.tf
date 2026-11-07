@@ -57,6 +57,43 @@ path "project-${var.project_name}/data/*" {
 path "project-${var.project_name}/metadata/*" {
   capabilities = ["read", "list"]
 }
+
+# Platform-written secrets: tenant realm admin, Discord webhook, tunnel token,
+# GHCR pull credentials. More specific than the rules above, so deny wins.
+path "project-${var.project_name}/data/system/*" {
+  capabilities = ["deny"]
+}
+path "project-${var.project_name}/metadata/system/*" {
+  capabilities = ["deny"]
+}
+# LIST metadata/system/ is also checked against the path without its slash.
+path "project-${var.project_name}/metadata/system" {
+  capabilities = ["deny"]
+}
+path "project-${var.project_name}/data/keycloak-tenant-admin" {
+  capabilities = ["deny"]
+}
+path "project-${var.project_name}/metadata/keycloak-tenant-admin" {
+  capabilities = ["deny"]
+}
+path "project-${var.project_name}/data/keycloak-tenant-admin-staging" {
+  capabilities = ["deny"]
+}
+path "project-${var.project_name}/metadata/keycloak-tenant-admin-staging" {
+  capabilities = ["deny"]
+}
+path "project-${var.project_name}/data/+/registry" {
+  capabilities = ["deny"]
+}
+path "project-${var.project_name}/metadata/+/registry" {
+  capabilities = ["deny"]
+}
+path "project-${var.project_name}/data/+/staging/registry" {
+  capabilities = ["deny"]
+}
+path "project-${var.project_name}/metadata/+/staging/registry" {
+  capabilities = ["deny"]
+}
 EOT
 }
 
