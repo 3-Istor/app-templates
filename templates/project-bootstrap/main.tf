@@ -41,6 +41,25 @@ path "project-${var.project_name}/*" {
 EOT
 }
 
+resource "vault_policy" "project_readers" {
+  name   = "project-${var.project_name}-read-policy"
+  policy = <<EOT
+path "sys/mounts" {
+  capabilities = ["read"]
+}
+path "sys/internal/ui/mounts/*" {
+  capabilities = ["read"]
+}
+
+path "project-${var.project_name}/data/*" {
+  capabilities = ["read", "list"]
+}
+path "project-${var.project_name}/metadata/*" {
+  capabilities = ["read", "list"]
+}
+EOT
+}
+
 # ==============================================================================
 # 4. PROJECT-SPECIFIC ACCESS ROLE AND AUTHENTICATION FLOW
 # ==============================================================================
@@ -221,10 +240,19 @@ data "vault_auth_backend" "oidc" {
   path = "oidc"
 }
 
+# An external group holds a single alias: a second alias pointing at the same
+# group silently replaces the first. Hence one group per Keycloak group.
+# project_devs keeps its name and address so existing states need no move.
 resource "vault_identity_group" "project_devs" {
   name     = "project-${var.project_name}-devs"
   type     = "external"
   policies = [vault_policy.project_developers.name]
+}
+
+resource "vault_identity_group" "project_members" {
+  name     = "project-${var.project_name}-members"
+  type     = "external"
+  policies = [vault_policy.project_readers.name]
 }
 
 resource "vault_identity_group_alias" "project_admins_alias" {
@@ -236,7 +264,7 @@ resource "vault_identity_group_alias" "project_admins_alias" {
 resource "vault_identity_group_alias" "project_members_alias" {
   name           = "project-${var.project_name}-members"
   mount_accessor = data.vault_auth_backend.oidc.accessor
-  canonical_id   = vault_identity_group.project_devs.id
+  canonical_id   = vault_identity_group.project_members.id
 }
 
 # ==============================================================================
