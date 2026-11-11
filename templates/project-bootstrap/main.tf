@@ -350,27 +350,50 @@ resource "keycloak_user" "tenant_admin" {
   depends_on = [keycloak_oidc_identity_provider.platform_idp]
 }
 
-# Grant realm-admin rights to the tenant admin
+# The roles of realm-admin, mapped one by one: the cmp-provisioner client holds
+# them in the realms it creates, but Keycloak refuses it the realm-admin
+# composite (403). impersonation is left out: the provisioner does not hold it.
+locals {
+  tenant_admin_roles = toset([
+    "create-client",
+    "manage-authorization",
+    "manage-clients",
+    "manage-events",
+    "manage-identity-providers",
+    "manage-organizations",
+    "manage-realm",
+    "manage-users",
+    "query-clients",
+    "query-groups",
+    "query-organizations",
+    "query-realms",
+    "query-users",
+    "view-authorization",
+    "view-clients",
+    "view-events",
+    "view-identity-providers",
+    "view-organizations",
+    "view-realm",
+    "view-users",
+  ])
+}
+
 data "keycloak_openid_client" "tenant_realm_management" {
   realm_id  = keycloak_realm.tenant_realm.id
   client_id = "realm-management"
 }
 
-data "keycloak_role" "tenant_realm_admin_role" {
+data "keycloak_role" "tenant_admin" {
+  for_each  = local.tenant_admin_roles
   realm_id  = keycloak_realm.tenant_realm.id
   client_id = data.keycloak_openid_client.tenant_realm_management.id
-  name      = "realm-admin"
+  name      = each.value
 }
 
 resource "keycloak_user_roles" "tenant_admin_grants" {
   realm_id = keycloak_realm.tenant_realm.id
   user_id  = keycloak_user.tenant_admin.id
-  role_ids = [data.keycloak_role.tenant_realm_admin_role.id]
-
-  depends_on = [
-    keycloak_user.tenant_admin,
-    data.keycloak_role.tenant_realm_admin_role
-  ]
+  role_ids = [for role in data.keycloak_role.tenant_admin : role.id]
 }
 
 # Store Tenant Realm Admin credentials in the Project's Vault path
@@ -440,7 +463,7 @@ resource "keycloak_group" "tenant_project_admins" {
 resource "keycloak_group_roles" "tenant_project_admins_realm_admin" {
   realm_id = keycloak_realm.tenant_realm.id
   group_id = keycloak_group.tenant_project_admins.id
-  role_ids = [data.keycloak_role.tenant_realm_admin_role.id]
+  role_ids = [for role in data.keycloak_role.tenant_admin : role.id]
 }
 
 # FORCE re-evaluates the claim at every broker login, so removing someone from

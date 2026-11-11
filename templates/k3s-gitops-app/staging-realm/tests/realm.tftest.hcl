@@ -35,6 +35,15 @@ run "names_the_staging_realm" {
 
   assert {
     condition     = keycloak_oidc_identity_provider.platform.extra_config["allowAdminRoleMapping"] == "true"
-    error_message = "the broker must be allowed to fill project-admins, which carries realm-admin"
+    error_message = "the broker must be allowed to fill project-admins, which carries the realm admin roles"
+  }
+
+  assert {
+    condition     = !contains(keys(data.keycloak_role.admin), "realm-admin") && !contains(keys(data.keycloak_role.admin), "impersonation")
+    error_message = "the cmp-provisioner client can neither map realm-admin nor grant impersonation"
+  }
+  assert {
+    condition     = length(data.keycloak_role.admin) == 20
+    error_message = "the staging admins keep every role of realm-admin but impersonation"
   }
 }
