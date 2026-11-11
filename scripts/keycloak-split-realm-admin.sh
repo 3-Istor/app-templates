@@ -12,12 +12,12 @@
 # Idempotent. Reads KEYCLOAK_URL and KEYCLOAK_ADMIN_PASSWORD (and optionally
 # KEYCLOAK_ADMIN_USERNAME, default admin) from the environment.
 #
-#   ./keycloak-split-realm-admin.sh --dry-run          # iot joetest self-runner self-runner-staging test-link
+#   ./keycloak-split-realm-admin.sh --dry-run          # iot iot-staging joetest self-runner self-runner-staging test-link
 #   ./keycloak-split-realm-admin.sh iot iot-staging
 #
 set -euo pipefail
 
-readonly DEFAULT_REALMS=(iot joetest self-runner self-runner-staging test-link)
+readonly DEFAULT_REALMS=(iot iot-staging joetest self-runner self-runner-staging test-link)
 
 # Must match local.tenant_admin_roles in templates/project-bootstrap/main.tf
 # and local.admin_roles in templates/k3s-gitops-app/staging-realm/main.tf.
