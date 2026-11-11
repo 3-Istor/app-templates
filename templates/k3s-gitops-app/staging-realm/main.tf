@@ -58,16 +58,44 @@ data "keycloak_openid_client" "realm_management" {
   client_id = "realm-management"
 }
 
-data "keycloak_role" "realm_admin" {
+# The roles of realm-admin one by one, less impersonation, as in project-bootstrap:
+# the cmp-provisioner client may not map the realm-admin composite.
+locals {
+  admin_roles = toset([
+    "create-client",
+    "manage-authorization",
+    "manage-clients",
+    "manage-events",
+    "manage-identity-providers",
+    "manage-organizations",
+    "manage-realm",
+    "manage-users",
+    "query-clients",
+    "query-groups",
+    "query-organizations",
+    "query-realms",
+    "query-users",
+    "view-authorization",
+    "view-clients",
+    "view-events",
+    "view-identity-providers",
+    "view-organizations",
+    "view-realm",
+    "view-users",
+  ])
+}
+
+data "keycloak_role" "admin" {
+  for_each  = local.admin_roles
   realm_id  = keycloak_realm.staging.id
   client_id = data.keycloak_openid_client.realm_management.id
-  name      = "realm-admin"
+  name      = each.value
 }
 
 resource "keycloak_user_roles" "admin_grants" {
   realm_id = keycloak_realm.staging.id
   user_id  = keycloak_user.admin.id
-  role_ids = [data.keycloak_role.realm_admin.id]
+  role_ids = [for role in data.keycloak_role.admin : role.id]
 }
 
 # The project's KV mount is created by project-bootstrap.
@@ -133,7 +161,7 @@ resource "keycloak_group" "project_admins" {
 resource "keycloak_group_roles" "project_admins_realm_admin" {
   realm_id = keycloak_realm.staging.id
   group_id = keycloak_group.project_admins.id
-  role_ids = [data.keycloak_role.realm_admin.id]
+  role_ids = [for role in data.keycloak_role.admin : role.id]
 }
 
 # FORCE re-evaluates the claim at every broker login, so removing someone from
