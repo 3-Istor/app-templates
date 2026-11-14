@@ -59,6 +59,40 @@ monitoring:
   enabled: true
   path: "/health"
 
+# The template backend serves /health without a database round trip, so both
+# probes use it: a database outage must not restart every pod.
+livenessProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+# GET /metrics on the app port: request rate, errors and latency by route, and
+# the app's own business metrics.
+metrics:
+  enabled: true
+  path: /metrics
+
+# OpenTelemetry traces to the platform collector. sampleRatio keeps that share
+# of the traces that start here.
+tracing:
+  enabled: true
+  sampleRatio: "1.0"
+
 offhours:
   enabled: true
   sleepAt: "0 1 * * *"
