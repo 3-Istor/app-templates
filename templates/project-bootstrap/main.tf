@@ -14,6 +14,13 @@ resource "keycloak_group" "project_admins" {
   name     = "project-${var.project_name}-admins"
 }
 
+# Guests read the project in the CMP (ProjectRole.GUEST) and can open its apps.
+# No Vault group: they never see secrets.
+resource "keycloak_group" "project_guests" {
+  realm_id = var.keycloak_realm
+  name     = "project-${var.project_name}-guests"
+}
+
 # ==============================================================================
 # 2. VAULT SECRETS ISOLATION
 # ==============================================================================
@@ -117,6 +124,15 @@ data "keycloak_role" "openid_client_access" {
 resource "keycloak_group_roles" "members_project_access" {
   realm_id = var.keycloak_realm
   group_id = keycloak_group.project_members.id
+  role_ids = [
+    keycloak_role.project_access.id,
+    data.keycloak_role.openid_client_access.id
+  ]
+}
+
+resource "keycloak_group_roles" "guests_project_access" {
+  realm_id = var.keycloak_realm
+  group_id = keycloak_group.project_guests.id
   role_ids = [
     keycloak_role.project_access.id,
     data.keycloak_role.openid_client_access.id
