@@ -133,19 +133,19 @@ resource "keycloak_group_roles" "admins_project_access" {
 }
 
 # -----------------------------------------------------------------------------
-# PHASE 0: ROOT AUTHENTICATION FLOW
+# PROJECT BROWSER FLOW
+# Bound to the broker clients (broker-<project> here, broker-<project>-staging in
+# k3s-gitops-app/staging-realm), so a platform account outside the project cannot
+# log in to the project realms. Same login steps as the platform's
+# Browser-3-istor-Login-v5 (K3s terraform/auth_flow.tf): a passkey skips the OTP,
+# the password path always ends with the OTP form. Then the project RBAC check.
 # -----------------------------------------------------------------------------
 resource "keycloak_authentication_flow" "project_flow" {
   realm_id    = var.keycloak_realm
   alias       = "browser-project-${var.project_name}"
-  description = "Complete Flow: Authentication Wrapper followed by Project RBAC Wrapper for ${var.project_name}"
+  description = "Passkey or password plus OTP, then deny without project-${var.project_name}-access"
 }
 
-# -----------------------------------------------------------------------------
-# PHASE 1: LOGIN WRAPPER
-# Groups every authentication method.
-# If ANY method succeeds, the user is authenticated.
-# -----------------------------------------------------------------------------
 resource "keycloak_authentication_subflow" "login_wrapper" {
   realm_id          = var.keycloak_realm
   parent_flow_alias = keycloak_authentication_flow.project_flow.alias
@@ -155,11 +155,6 @@ resource "keycloak_authentication_subflow" "login_wrapper" {
   priority          = 10
 }
 
-# -----------------------------------------------------------------------------
-# PHASE 1.1: SSO AUTHENTICATION METHODS
-# -----------------------------------------------------------------------------
-
-# Checks if the user already has a valid Keycloak SSO cookie.
 resource "keycloak_authentication_execution" "project_cookie" {
   realm_id          = var.keycloak_realm
   parent_flow_alias = keycloak_authentication_subflow.login_wrapper.alias
@@ -168,38 +163,16 @@ resource "keycloak_authentication_execution" "project_cookie" {
   priority          = 10
 }
 
-# Checks for Kerberos ticket (Active Directory SSO)
-resource "keycloak_authentication_execution" "project_kerberos" {
-  realm_id          = var.keycloak_realm
-  parent_flow_alias = keycloak_authentication_subflow.login_wrapper.alias
-  authenticator     = "auth-spnego"
-  requirement       = "ALTERNATIVE"
-  priority          = 20
-}
-
-# Redirect to external identity provider if configured
-resource "keycloak_authentication_execution" "project_idp_redirector" {
-  realm_id          = var.keycloak_realm
-  parent_flow_alias = keycloak_authentication_subflow.login_wrapper.alias
-  authenticator     = "identity-provider-redirector"
-  requirement       = "ALTERNATIVE"
-  priority          = 30
-}
-
-# -----------------------------------------------------------------------------
-# PHASE 1.2: MANUAL LOGIN FALLBACK
-# If no SSO method worked, fallback to username/password login
-# -----------------------------------------------------------------------------
 resource "keycloak_authentication_subflow" "forms_wrapper" {
   realm_id          = var.keycloak_realm
   parent_flow_alias = keycloak_authentication_subflow.login_wrapper.alias
   alias             = "forms-wrapper-project-${var.project_name}"
   provider_id       = "basic-flow"
   requirement       = "ALTERNATIVE"
-  priority          = 40
+  priority          = 20
 }
 
-# Standard Keycloak login page
+# Also takes a passkey: passwordless_passkeys_enabled is set on the platform realm.
 resource "keycloak_authentication_execution" "project_username_password" {
   realm_id          = var.keycloak_realm
   parent_flow_alias = keycloak_authentication_subflow.forms_wrapper.alias
@@ -208,26 +181,40 @@ resource "keycloak_authentication_execution" "project_username_password" {
   priority          = 10
 }
 
-# -----------------------------------------------------------------------------
-# PHASE 1.3: MULTI FACTOR AUTHENTICATION
-# Triggered after successful username/password authentication. Mandatory for all.
-# -----------------------------------------------------------------------------
-resource "keycloak_authentication_subflow" "mandatory_otp" {
+resource "keycloak_authentication_subflow" "second_factor" {
   realm_id          = var.keycloak_realm
   parent_flow_alias = keycloak_authentication_subflow.forms_wrapper.alias
-  alias             = "mandatory-otp-project-${var.project_name}"
+  alias             = "second-factor-project-${var.project_name}"
   provider_id       = "basic-flow"
-  requirement       = "REQUIRED"
+  requirement       = "CONDITIONAL"
   priority          = 20
 }
 
-# Ask for OTP token.
-resource "keycloak_authentication_execution" "project_otp_form" {
+resource "keycloak_authentication_execution" "project_condition_no_passkey" {
   realm_id          = var.keycloak_realm
-  parent_flow_alias = keycloak_authentication_subflow.mandatory_otp.alias
-  authenticator     = "auth-otp-form"
+  parent_flow_alias = keycloak_authentication_subflow.second_factor.alias
+  authenticator     = "conditional-credential"
   requirement       = "REQUIRED"
   priority          = 10
+}
+
+resource "keycloak_authentication_execution_config" "project_condition_no_passkey" {
+  realm_id     = var.keycloak_realm
+  execution_id = keycloak_authentication_execution.project_condition_no_passkey.id
+  alias        = "otp-unless-passkey-project-${var.project_name}"
+  config = {
+    credentials = "webauthn-passwordless"
+    included    = "false"
+  }
+}
+
+# REQUIRED so a user without OTP is sent to the QR code setup, as in v5.
+resource "keycloak_authentication_execution" "project_otp_form" {
+  realm_id          = var.keycloak_realm
+  parent_flow_alias = keycloak_authentication_subflow.second_factor.alias
+  authenticator     = "auth-otp-form"
+  requirement       = "REQUIRED"
+  priority          = 20
 }
 
 # -----------------------------------------------------------------------------
@@ -423,6 +410,10 @@ resource "keycloak_openid_client" "tenant_broker_client" {
   valid_redirect_uris = [
     "https://auth.3istor.com/realms/${var.project_name}/broker/3istor-platform/endpoint"
   ]
+
+  authentication_flow_binding_overrides {
+    browser_id = keycloak_authentication_flow.project_flow.id
+  }
 }
 
 # Configure the Tenant Realm to trust the Platform Realm

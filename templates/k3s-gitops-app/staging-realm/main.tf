@@ -114,6 +114,12 @@ resource "vault_kv_secret_v2" "admin_creds" {
 # IDENTITY BROKERING (developers log in with their platform accounts)
 # ==============================================================================
 
+# Created by project-bootstrap: only project members get through the broker.
+data "keycloak_authentication_flow" "project" {
+  realm_id = var.keycloak_realm
+  alias    = "browser-project-${var.project_name}"
+}
+
 resource "keycloak_openid_client" "broker" {
   realm_id              = var.keycloak_realm
   client_id             = "broker-${var.project_name}-staging"
@@ -124,6 +130,10 @@ resource "keycloak_openid_client" "broker" {
   valid_redirect_uris = [
     "https://auth.3istor.com/realms/${var.project_name}-staging/broker/3istor-platform/endpoint"
   ]
+
+  authentication_flow_binding_overrides {
+    browser_id = data.keycloak_authentication_flow.project.id
+  }
 }
 
 resource "keycloak_oidc_identity_provider" "platform" {

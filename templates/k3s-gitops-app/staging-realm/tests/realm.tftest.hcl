@@ -29,6 +29,14 @@ run "names_the_staging_realm" {
     error_message = "the broker may only redirect to the staging realm's endpoint"
   }
   assert {
+    condition     = data.keycloak_authentication_flow.project.alias == "browser-project-test-hugo"
+    error_message = "the staging broker must use the project's browser flow"
+  }
+  assert {
+    condition     = one([for o in keycloak_openid_client.broker.authentication_flow_binding_overrides : o.browser_id]) == data.keycloak_authentication_flow.project.id
+    error_message = "without the project flow any platform account logs in to the staging realm"
+  }
+  assert {
     condition     = vault_kv_secret_v2.admin_creds.name == "keycloak-tenant-admin-staging"
     error_message = "the staging admin credentials must not overwrite the production ones"
   }
