@@ -8,11 +8,12 @@ locals {
   # list because the module no longer creates cloud resources — the per-capability
   # split (network, compute, database, storage, exposure) lives in
   # project-bootstrap, which is where cloud resources are actually created.
-  # db_backup: the backup bucket is an ObjectBucketClaim only Rook (on-prem) serves.
+  # Cloud backup keys come from Vault through WireGuard; backup_before is false
+  # on the first deploy (new database), the CMP flips it once the bucket key exists.
   cloud_profile = {
-    onprem = { storage_class = "local-path", db_backup = true }
-    aws    = { storage_class = "local-path", db_backup = false } # node disk, lost on down, zero cost
-    gcp    = { storage_class = "local-path", db_backup = false } # node disk, lost on down, zero cost
+    onprem = { storage_class = "local-path", db_backup = true, backup_bucket = "rook", backup_endpoint = "http://192.168.1.110:7480", backup_before = true }
+    aws    = { storage_class = "local-path", db_backup = true, backup_bucket = "vault", backup_endpoint = "http://onprem-apps.cnp-vpn.svc.cluster.local:18084", backup_before = false }
+    gcp    = { storage_class = "local-path", db_backup = true, backup_bucket = "vault", backup_endpoint = "http://onprem-apps.cnp-vpn.svc.cluster.local:18084", backup_before = false }
   }
   storage_class = local.cloud_profile[var.target_cloud].storage_class
 
@@ -67,12 +68,15 @@ resource "github_repository_file" "values_backend" {
   branch     = "main"
   file       = "deploy/values-backend.yaml"
   content = templatefile("${path.module}/templates/values-backend.yaml.tpl", {
-    github_owner  = lower(var.github_owner)
-    app_name      = lower(var.app_name)
-    project_name  = var.project_name
-    storage_class = local.storage_class
-    image_tag     = local.image_tag
-    db_backup     = local.cloud_profile[var.target_cloud].db_backup
+    github_owner    = lower(var.github_owner)
+    app_name        = lower(var.app_name)
+    project_name    = var.project_name
+    storage_class   = local.storage_class
+    image_tag       = local.image_tag
+    db_backup       = local.cloud_profile[var.target_cloud].db_backup
+    backup_bucket   = local.cloud_profile[var.target_cloud].backup_bucket
+    backup_endpoint = local.cloud_profile[var.target_cloud].backup_endpoint
+    backup_before   = local.cloud_profile[var.target_cloud].backup_before
   })
   commit_message      = "chore: bootstrap cnp backend variables [skip ci]"
   overwrite_on_create = true
