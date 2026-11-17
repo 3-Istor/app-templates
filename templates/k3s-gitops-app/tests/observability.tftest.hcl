@@ -43,3 +43,21 @@ run "fullstack_frontend_is_probed" {
     error_message = "a new frontend must have its readiness probe rendered"
   }
 }
+
+run "public_app_has_a_role_on_the_other_public_mount" {
+  variables { target_cloud = "aws" }
+
+  assert {
+    condition     = vault_kubernetes_auth_backend_role.app_role_peer[0].backend == "kubernetes-gcp" && vault_kubernetes_auth_backend_role.app_role.backend == "kubernetes-aws"
+    error_message = "an aws app needs its role on kubernetes-gcp too"
+  }
+}
+
+run "onprem_app_has_no_peer_role" {
+  variables { target_cloud = "onprem" }
+
+  assert {
+    condition     = length(vault_kubernetes_auth_backend_role.app_role_peer) == 0
+    error_message = "on-prem has a single mount"
+  }
+}
