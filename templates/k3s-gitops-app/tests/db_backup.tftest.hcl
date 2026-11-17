@@ -35,6 +35,7 @@ run "onprem_database_is_backed_up" {
       && yamldecode(github_repository_file.values_backend[0].content).db.backup.bucket == "rook"
       && yamldecode(github_repository_file.values_backend[0].content).db.backup.endpointURL == "http://192.168.1.110:7480"
       && yamldecode(github_repository_file.values_backend[0].content).migrations.backupBefore == true
+      && yamldecode(github_repository_file.values_backend[0].content).db.metrics == true
     )
     error_message = "on-prem: rook bucket, in-cluster RGW, backup before migration"
   }

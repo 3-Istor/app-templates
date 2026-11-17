@@ -45,6 +45,8 @@ db:
   name: ${app_name}
   storage: "1Gi"
   storageClass: "${storage_class}"
+  # New database: scraping it costs no restart and feeds the WAL archiving alert.
+  metrics: true
   backup:
     enabled: ${db_backup}
     bucket: ${backup_bucket}
