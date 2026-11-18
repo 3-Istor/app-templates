@@ -41,3 +41,20 @@ run "binds_the_project_flow_to_the_broker" {
     error_message = "a passkey must skip the OTP, as in the platform flow v5"
   }
 }
+
+run "offhours_login_goes_through_the_tenant_realm" {
+  command = plan
+
+  assert {
+    condition     = keycloak_openid_client.offhours_client.valid_redirect_uris == toset(["https://offhours-test-hugo.3istor.com/oauth2/callback"])
+    error_message = "the Gateway's OIDC callback for offhours-<project> must be allowed"
+  }
+  assert {
+    condition     = contains(keycloak_openid_client_default_scopes.offhours_client_scopes.default_scopes, "groups")
+    error_message = "offhours-guard reads project membership from the groups claim"
+  }
+  assert {
+    condition     = vault_kv_secret_v2.offhours_oidc.name == "system/offhours-oidc"
+    error_message = "the project system role only reads system/*, where cnp-project-base syncs the secret from"
+  }
+}

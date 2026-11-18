@@ -533,6 +533,54 @@ resource "keycloak_openid_group_membership_protocol_mapper" "tenant_groups" {
 }
 
 # ==============================================================================
+# OFFHOURS DASHBOARD LOGIN
+# ==============================================================================
+
+# The Gateway's OIDC filter in front of offhours-<project> (cnp-project-base)
+# logs users in through this client; offhours-guard then requires
+# project-members or project-admins in the token. Not cnp-<project>-*, which
+# the CMP treats as an app client.
+resource "keycloak_openid_client" "offhours_client" {
+  realm_id                     = keycloak_realm.tenant_realm.id
+  client_id                    = "offhours-guard"
+  name                         = "Offhours dashboard"
+  enabled                      = true
+  access_type                  = "CONFIDENTIAL"
+  standard_flow_enabled        = true
+  direct_access_grants_enabled = false
+
+  valid_redirect_uris = [
+    "https://offhours-${var.project_name}.3istor.com/oauth2/callback"
+  ]
+
+  valid_post_logout_redirect_uris = [
+    "https://offhours-${var.project_name}.3istor.com/"
+  ]
+}
+
+resource "keycloak_openid_client_default_scopes" "offhours_client_scopes" {
+  realm_id  = keycloak_realm.tenant_realm.id
+  client_id = keycloak_openid_client.offhours_client.id
+  default_scopes = [
+    "basic",
+    "email",
+    keycloak_openid_client_scope.tenant_groups.name,
+    "profile",
+    "roles",
+    "web-origins",
+  ]
+}
+
+resource "vault_kv_secret_v2" "offhours_oidc" {
+  mount               = vault_mount.project_kv.path
+  name                = "system/offhours-oidc"
+  delete_all_versions = true
+  data_json = jsonencode({
+    client-secret = keycloak_openid_client.offhours_client.client_secret
+  })
+}
+
+# ==============================================================================
 # Gatus
 # ==============================================================================
 resource "vault_kv_secret_v2" "project_system_secrets" {
