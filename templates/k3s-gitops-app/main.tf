@@ -230,6 +230,27 @@ resource "vault_kv_secret_v2" "app_registry" {
   })
 }
 
+# The app's secrets operator reads its own subtree only (CNP-297): with the
+# project developers' policy, a pod of one app could read every other app's
+# secrets. People keep that project-wide policy through their groups.
+resource "vault_policy" "app" {
+  name   = "${var.project_name}-${var.app_name}-policy"
+  policy = <<EOT
+path "project-${var.project_name}/data/${var.app_name}" {
+  capabilities = ["read"]
+}
+path "project-${var.project_name}/data/${var.app_name}/*" {
+  capabilities = ["read"]
+}
+path "project-${var.project_name}/metadata/${var.app_name}" {
+  capabilities = ["read", "list"]
+}
+path "project-${var.project_name}/metadata/${var.app_name}/*" {
+  capabilities = ["read", "list"]
+}
+EOT
+}
+
 # Vault auth role for this app, on the auth mount of the project's cloud (D-07).
 resource "vault_kubernetes_auth_backend_role" "app_role" {
   # One auth mount per cluster; the aws/gcp mounts are created by the platform stack.
@@ -238,7 +259,7 @@ resource "vault_kubernetes_auth_backend_role" "app_role" {
   bound_service_account_names      = ["vault-secrets-operator"]
   bound_service_account_namespaces = ["vault-secrets-operator"]
   token_ttl                        = 86400
-  token_policies                   = ["project-${var.project_name}-dev-policy"]
+  token_policies                   = [vault_policy.app.name]
 }
 
 # ==============================================================================
