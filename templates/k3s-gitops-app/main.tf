@@ -234,7 +234,7 @@ resource "vault_kv_secret_v2" "app_registry" {
 # project developers' policy, a pod of one app could read every other app's
 # secrets. People keep that project-wide policy through their groups.
 resource "vault_policy" "app" {
-  name   = "${var.project_name}-${var.app_name}-policy"
+  name   = "project-${var.project_name}-app-${var.app_name}-policy"
   policy = <<EOT
 path "project-${var.project_name}/data/${var.app_name}" {
   capabilities = ["read"]

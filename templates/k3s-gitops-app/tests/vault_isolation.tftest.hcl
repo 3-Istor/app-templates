@@ -29,7 +29,7 @@ run "the_app_role_gets_the_app_policy_only" {
   command = plan
 
   assert {
-    condition     = vault_kubernetes_auth_backend_role.app_role.token_policies == toset(["test-hugo-app-test-policy"])
+    condition     = vault_kubernetes_auth_backend_role.app_role.token_policies == toset(["project-test-hugo-app-app-test-policy"])
     error_message = "The app's VSO role must carry its own policy, not the project's."
   }
 }
