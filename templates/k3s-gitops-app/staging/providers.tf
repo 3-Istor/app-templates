@@ -6,7 +6,7 @@ terraform {
     }
     keycloak = {
       source  = "keycloak/keycloak"
-      version = "~> 5.7"
+      version = "~> 5.11"
     }
     cloudflare = {
       source  = "cloudflare/cloudflare"

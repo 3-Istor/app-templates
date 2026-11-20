@@ -443,9 +443,7 @@ resource "keycloak_oidc_identity_provider" "platform_idp" {
   client_secret     = keycloak_openid_client.tenant_broker_client.client_secret
   default_scopes    = "openid profile email"
   # Keycloak 26.8+ blocks mappers from filling a group that carries admin roles unless this is on.
-  extra_config = {
-    allowAdminRoleMapping = "true"
-  }
+  allow_admin_role_mapping = true
 }
 
 
