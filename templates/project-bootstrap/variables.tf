@@ -104,14 +104,8 @@ variable "grafana_admin_password" {
   description = "Admin password for Grafana"
 }
 
-variable "loki_password" {
-  description = "Password of the grafana-projects user of the Loki gateway."
-  type        = string
-  sensitive   = true
-}
-
 variable "metrics_password" {
-  description = "Password of the project's vmauth user, derived by the CMP."
+  description = "Password of the project's vmauth user, for metrics and logs, derived by the CMP."
   type        = string
   sensitive   = true
   default     = ""
