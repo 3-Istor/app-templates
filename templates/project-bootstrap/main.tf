@@ -323,7 +323,7 @@ resource "keycloak_realm_events" "tenant_realm" {
   realm_id = keycloak_realm.tenant_realm.id
 
   events_enabled    = true
-  events_expiration = 2592000 # 30 days, matching the Loki retention
+  events_expiration = 2592000 # 30 days, matching the VictoriaLogs retention
 
   admin_events_enabled         = true
   admin_events_details_enabled = false

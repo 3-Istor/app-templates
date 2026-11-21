@@ -22,7 +22,6 @@ variables {
   cloudflare_account_id  = "a"
   cloudflare_zone_id     = "z"
   grafana_admin_password = "g"
-  loki_password          = "l"
 }
 
 run "binds_the_project_flow_to_the_broker" {
@@ -56,5 +55,22 @@ run "offhours_login_goes_through_the_tenant_realm" {
   assert {
     condition     = vault_kv_secret_v2.offhours_oidc.name == "system/offhours-oidc"
     error_message = "the project system role only reads system/*, where cnp-project-base syncs the secret from"
+  }
+}
+
+run "project_logs_read_victorialogs_as_the_project_vmauth_user" {
+  command = plan
+
+  variables {
+    metrics_password = "m"
+  }
+
+  assert {
+    condition     = grafana_data_source.victorialogs.type == "victoriametrics-logs-datasource" && grafana_data_source.victorialogs.url == "http://vmauth-projects.observability.svc.cluster.local:8427"
+    error_message = "project logs must go through vmauth-projects, which pins the project's namespaces"
+  }
+  assert {
+    condition     = grafana_data_source.victorialogs.basic_auth_username == "project-test-hugo"
+    error_message = "the logs datasource must use the project's own vmauth user"
   }
 }

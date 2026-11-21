@@ -24,7 +24,7 @@ resource "keycloak_realm_events" "staging" {
   realm_id = keycloak_realm.staging.id
 
   events_enabled    = true
-  events_expiration = 2592000 # 30 days, matching the Loki retention
+  events_expiration = 2592000 # 30 days, matching the VictoriaLogs retention
 
   admin_events_enabled         = true
   admin_events_details_enabled = false
