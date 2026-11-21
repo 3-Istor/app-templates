@@ -8,8 +8,8 @@
   "panels": [
     {
       "datasource": {
-        "type": "loki",
-        "uid": "${DS_LOKI}"
+        "type": "victoriametrics-logs-datasource",
+        "uid": "${DS_VICTORIALOGS}"
       },
       "gridPos": { "h": 20, "w": 24, "x": 0, "y": 0 },
       "id": 1,
@@ -25,10 +25,13 @@
       },
       "targets": [
         {
-          "datasource": { "type": "loki", "uid": "${DS_LOKI}" },
-          "editorMode": "builder",
-          "expr": "{tenant=\"$project_name\"} |~ \"$search\"",
-          "queryType": "range",
+          "datasource": {
+            "type": "victoriametrics-logs-datasource",
+            "uid": "${DS_VICTORIALOGS}"
+          },
+          "editorMode": "code",
+          "expr": "_msg:~\"$search\"",
+          "queryType": "instant",
           "refId": "A"
         }
       ],

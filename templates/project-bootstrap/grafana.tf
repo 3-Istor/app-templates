@@ -8,24 +8,22 @@ resource "grafana_organization" "project_org" {
   create_users = false
 }
 
-# 2. Add the LOKI Data Source (Isolated Logs)
-resource "grafana_data_source" "loki" {
-  org_id      = grafana_organization.project_org.org_id
-  type        = "loki"
-  name        = "Logs - ${title(var.project_name)}"
-  url         = "http://loki-gateway.observability.svc.cluster.local:80"
+# 2. Add the VictoriaLogs Data Source (Isolated Logs)
+resource "grafana_data_source" "victorialogs" {
+  org_id = grafana_organization.project_org.org_id
+  type   = "victoriametrics-logs-datasource"
+  name   = "Logs - ${title(var.project_name)}"
+
+  # Same vmauth user as the metrics: vmauth-projects, configured by the CMP,
+  # pins the project's namespaces on every LogsQL read. Project admins are
+  # Grafana Editors, who cannot edit a datasource to lift that filter.
+  url         = "http://vmauth-projects.observability.svc.cluster.local:8427"
   access_mode = "proxy"
 
-  # The project's own Loki tenant. Project admins are Grafana Editors, who
-  # cannot edit a datasource, so they cannot point it at another tenant.
-  http_headers = {
-    "X-Scope-OrgID" = var.project_name
-  }
-
   basic_auth_enabled  = true
-  basic_auth_username = "grafana-projects"
+  basic_auth_username = "project-${var.project_name}"
   secure_json_data_encoded = jsonencode({
-    basicAuthPassword = var.loki_password
+    basicAuthPassword = var.metrics_password
   })
 }
 
@@ -70,8 +68,8 @@ resource "grafana_dashboard" "app_logs" {
 
   config_json = replace(
     file("${path.module}/dashboards/app-logs.json"),
-    "$${DS_LOKI}",
-    grafana_data_source.loki.uid
+    "$${DS_VICTORIALOGS}",
+    grafana_data_source.victorialogs.uid
   )
   overwrite = true
 }
