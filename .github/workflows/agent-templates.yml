@@ -1,0 +1,31 @@
+name: agent templates
+
+on:
+  pull_request:
+    paths: ["agents/**", "scripts/check-agent-templates.py", ".github/workflows/agent-templates.yml"]
+  push:
+    branches: [main]
+    paths: ["agents/**", "scripts/check-agent-templates.py", ".github/workflows/agent-templates.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.13"
+
+      - name: Install checker dependencies
+        run: python -m pip install jsonschema==4.25.1 pyyaml==6.0.3
+
+      # The agent: block is defined by the chart that renders it.
+      - name: Fetch the infra-templates values schema
+        run: curl -fsSL -o "$RUNNER_TEMP/values.schema.json" https://raw.githubusercontent.com/3-Istor/infra-templates/main/values.schema.json
+
+      - name: Check agent templates
+        run: python scripts/check-agent-templates.py "$RUNNER_TEMP/values.schema.json"

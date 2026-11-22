@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/3-Istor/app-templates/agents/schema.json",
+  "title": "CNP agent template",
+  "description": "One file per template, agents/<id>.yaml, listed by the CMP agent wizard. defaults is the agent: block of infra-templates, validated against its values.schema.json by scripts/check-agent-templates.py.",
+  "type": "object",
+  "required": ["id", "title", "description", "icon", "recommended", "defaults", "suggestedTools", "riskNotes"],
+  "additionalProperties": false,
+  "$defs": {
+    "badge": { "enum": ["untrusted_content", "private_data", "external_send", "writes", "executes_code"] },
+    "recommended": {
+      "type": "object",
+      "required": ["models", "isolation", "dailyTokenBudget"],
+      "additionalProperties": false,
+      "properties": {
+        "models": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "enum": ["claude-haiku-5-5", "claude-sonnet-5-5"] }
+        },
+        "isolation": { "enum": ["runc", "gvisor", "kata"] },
+        "dailyTokenBudget": { "type": "integer", "minimum": 1000 }
+      }
+    },
+    "suggestedTool": {
+      "description": "name: a platform tool; match: a glob over the project's MCP tools (<server>__<tool>).",
+      "type": "object",
+      "required": ["badges", "why"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "enum": ["run_python", "web_search"] },
+        "match": { "type": "string", "pattern": "^[a-z*][a-z0-9_*-]*__[A-Za-z0-9_*-]+$" },
+        "badges": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/badge" } },
+        "why": { "type": "string", "minLength": 10 }
+      },
+      "oneOf": [{ "required": ["name"] }, { "required": ["match"] }]
+    },
+    "suggestedTools": { "type": "array", "items": { "$ref": "#/$defs/suggestedTool" } },
+    "agentDefaults": { "type": "object", "required": ["template", "description", "instructions"] }
+  },
+  "properties": {
+    "id": { "type": "string", "pattern": "^[a-z][a-z0-9-]*$" },
+    "title": { "type": "string", "minLength": 3, "maxLength": 60 },
+    "description": { "type": "string", "minLength": 20, "maxLength": 300 },
+    "icon": { "description": "A lucide icon name, as the CMP frontend renders it.", "type": "string", "pattern": "^[a-z0-9-]+$" },
+    "recommended": { "$ref": "#/$defs/recommended" },
+    "defaults": { "$ref": "#/$defs/agentDefaults" },
+    "suggestedTools": { "$ref": "#/$defs/suggestedTools" },
+    "riskNotes": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 10 } },
+    "pair": {
+      "description": "A template that creates two agents, <name>-<suffix>: the reader uses the top-level fields, the actor its own.",
+      "type": "object",
+      "required": ["reader", "actor"],
+      "additionalProperties": false,
+      "properties": {
+        "reader": {
+          "type": "object",
+          "required": ["suffix"],
+          "additionalProperties": false,
+          "properties": { "suffix": { "const": "reader" } }
+        },
+        "actor": {
+          "type": "object",
+          "required": ["suffix", "recommended", "defaults", "suggestedTools"],
+          "additionalProperties": false,
+          "properties": {
+            "suffix": { "const": "actor" },
+            "recommended": { "$ref": "#/$defs/recommended" },
+            "defaults": { "$ref": "#/$defs/agentDefaults" },
+            "suggestedTools": { "$ref": "#/$defs/suggestedTools" }
+          }
+        }
+      }
+    }
+  }
+}
