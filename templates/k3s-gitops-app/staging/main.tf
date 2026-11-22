@@ -124,6 +124,17 @@ resource "vault_kubernetes_auth_backend_role" "staging_role" {
   token_policies                   = [vault_policy.staging.name]
 }
 
+resource "vault_kubernetes_auth_backend_role" "staging_role_peer" {
+  # The aws and gcp mounts are permanent, so a cross-cloud move finds its roles waiting.
+  count                            = var.target_cloud == "onprem" ? 0 : 1
+  backend                          = "kubernetes-${var.target_cloud == "aws" ? "gcp" : "aws"}"
+  role_name                        = "${var.project_name}-${var.app_name}-staging-role"
+  bound_service_account_names      = ["vault-secrets-operator"]
+  bound_service_account_namespaces = ["vault-secrets-operator"]
+  token_ttl                        = 86400
+  token_policies                   = [vault_policy.staging.name]
+}
+
 data "cloudflare_zero_trust_tunnel_cloudflared" "project_tunnel" {
   account_id = var.cloudflare_account_id
 

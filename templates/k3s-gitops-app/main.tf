@@ -262,6 +262,17 @@ resource "vault_kubernetes_auth_backend_role" "app_role" {
   token_policies                   = [vault_policy.app.name]
 }
 
+resource "vault_kubernetes_auth_backend_role" "app_role_peer" {
+  # The aws and gcp mounts are permanent, so a cross-cloud move finds its roles waiting.
+  count                            = var.target_cloud == "onprem" ? 0 : 1
+  backend                          = "kubernetes-${var.target_cloud == "aws" ? "gcp" : "aws"}"
+  role_name                        = "${var.project_name}-${var.app_name}-role"
+  bound_service_account_names      = ["vault-secrets-operator"]
+  bound_service_account_namespaces = ["vault-secrets-operator"]
+  token_ttl                        = 86400
+  token_policies                   = [vault_policy.app.name]
+}
+
 # ==============================================================================
 # 4. PUBLIC HOSTNAME
 # ==============================================================================

@@ -41,6 +41,26 @@ run "binds_the_project_flow_to_the_broker" {
   }
 }
 
+run "public_project_has_a_role_on_the_other_public_mount" {
+  command   = plan
+  variables { target_cloud = "aws" }
+
+  assert {
+    condition     = vault_kubernetes_auth_backend_role.project_system_role_peer[0].backend == "kubernetes-gcp" && vault_kubernetes_auth_backend_role.project_system_role.backend == "kubernetes-aws"
+    error_message = "an aws project needs its role on kubernetes-gcp too"
+  }
+}
+
+run "onprem_project_has_no_peer_role" {
+  command   = plan
+  variables { target_cloud = "onprem" }
+
+  assert {
+    condition     = length(vault_kubernetes_auth_backend_role.project_system_role_peer) == 0
+    error_message = "on-prem has a single mount"
+  }
+}
+
 run "offhours_login_goes_through_the_tenant_realm" {
   command = plan
 
