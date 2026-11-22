@@ -323,7 +323,7 @@ resource "keycloak_realm_events" "tenant_realm" {
   realm_id = keycloak_realm.tenant_realm.id
 
   events_enabled    = true
-  events_expiration = 2592000 # 30 days, matching the Loki retention
+  events_expiration = 2592000 # 30 days, matching the VictoriaLogs retention
 
   admin_events_enabled         = true
   admin_events_details_enabled = false
@@ -443,9 +443,7 @@ resource "keycloak_oidc_identity_provider" "platform_idp" {
   client_secret     = keycloak_openid_client.tenant_broker_client.client_secret
   default_scopes    = "openid profile email"
   # Keycloak 26.8+ blocks mappers from filling a group that carries admin roles unless this is on.
-  extra_config = {
-    allowAdminRoleMapping = "true"
-  }
+  allow_admin_role_mapping = true
 }
 
 
@@ -530,6 +528,54 @@ resource "keycloak_openid_group_membership_protocol_mapper" "tenant_groups" {
   name            = "groups"
   claim_name      = "groups"
   full_path       = false
+}
+
+# ==============================================================================
+# OFFHOURS DASHBOARD LOGIN
+# ==============================================================================
+
+# The Gateway's OIDC filter in front of offhours-<project> (cnp-project-base)
+# logs users in through this client; offhours-guard then requires
+# project-members or project-admins in the token. Not cnp-<project>-*, which
+# the CMP treats as an app client.
+resource "keycloak_openid_client" "offhours_client" {
+  realm_id                     = keycloak_realm.tenant_realm.id
+  client_id                    = "offhours-guard"
+  name                         = "Offhours dashboard"
+  enabled                      = true
+  access_type                  = "CONFIDENTIAL"
+  standard_flow_enabled        = true
+  direct_access_grants_enabled = false
+
+  valid_redirect_uris = [
+    "https://offhours-${var.project_name}.3istor.com/oauth2/callback"
+  ]
+
+  valid_post_logout_redirect_uris = [
+    "https://offhours-${var.project_name}.3istor.com/"
+  ]
+}
+
+resource "keycloak_openid_client_default_scopes" "offhours_client_scopes" {
+  realm_id  = keycloak_realm.tenant_realm.id
+  client_id = keycloak_openid_client.offhours_client.id
+  default_scopes = [
+    "basic",
+    "email",
+    keycloak_openid_client_scope.tenant_groups.name,
+    "profile",
+    "roles",
+    "web-origins",
+  ]
+}
+
+resource "vault_kv_secret_v2" "offhours_oidc" {
+  mount               = vault_mount.project_kv.path
+  name                = "system/offhours-oidc"
+  delete_all_versions = true
+  data_json = jsonencode({
+    client-secret = keycloak_openid_client.offhours_client.client_secret
+  })
 }
 
 # ==============================================================================

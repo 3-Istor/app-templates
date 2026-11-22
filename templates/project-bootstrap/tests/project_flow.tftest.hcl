@@ -22,7 +22,6 @@ variables {
   cloudflare_account_id  = "a"
   cloudflare_zone_id     = "z"
   grafana_admin_password = "g"
-  loki_password          = "l"
 }
 
 run "binds_the_project_flow_to_the_broker" {
@@ -59,5 +58,39 @@ run "onprem_project_has_no_peer_role" {
   assert {
     condition     = length(vault_kubernetes_auth_backend_role.project_system_role_peer) == 0
     error_message = "on-prem has a single mount"
+  }
+}
+
+run "offhours_login_goes_through_the_tenant_realm" {
+  command = plan
+
+  assert {
+    condition     = keycloak_openid_client.offhours_client.valid_redirect_uris == toset(["https://offhours-test-hugo.3istor.com/oauth2/callback"])
+    error_message = "the Gateway's OIDC callback for offhours-<project> must be allowed"
+  }
+  assert {
+    condition     = contains(keycloak_openid_client_default_scopes.offhours_client_scopes.default_scopes, "groups")
+    error_message = "offhours-guard reads project membership from the groups claim"
+  }
+  assert {
+    condition     = vault_kv_secret_v2.offhours_oidc.name == "system/offhours-oidc"
+    error_message = "the project system role only reads system/*, where cnp-project-base syncs the secret from"
+  }
+}
+
+run "project_logs_read_victorialogs_as_the_project_vmauth_user" {
+  command = plan
+
+  variables {
+    metrics_password = "m"
+  }
+
+  assert {
+    condition     = grafana_data_source.victorialogs.type == "victoriametrics-logs-datasource" && grafana_data_source.victorialogs.url == "http://vmauth-projects.observability.svc.cluster.local:8427"
+    error_message = "project logs must go through vmauth-projects, which pins the project's namespaces"
+  }
+  assert {
+    condition     = grafana_data_source.victorialogs.basic_auth_username == "project-test-hugo"
+    error_message = "the logs datasource must use the project's own vmauth user"
   }
 }

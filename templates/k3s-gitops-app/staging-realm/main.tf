@@ -24,7 +24,7 @@ resource "keycloak_realm_events" "staging" {
   realm_id = keycloak_realm.staging.id
 
   events_enabled    = true
-  events_expiration = 2592000 # 30 days, matching the Loki retention
+  events_expiration = 2592000 # 30 days, matching the VictoriaLogs retention
 
   admin_events_enabled         = true
   admin_events_details_enabled = false
@@ -146,9 +146,7 @@ resource "keycloak_oidc_identity_provider" "platform" {
   client_secret     = keycloak_openid_client.broker.client_secret
   default_scopes    = "openid profile email"
   # Keycloak 26.8+ blocks mappers from filling a group that carries admin roles unless this is on.
-  extra_config = {
-    allowAdminRoleMapping = "true"
-  }
+  allow_admin_role_mapping = true
 }
 
 # ==============================================================================

@@ -42,7 +42,7 @@ run "names_the_staging_realm" {
   }
 
   assert {
-    condition     = keycloak_oidc_identity_provider.platform.extra_config["allowAdminRoleMapping"] == "true"
+    condition     = keycloak_oidc_identity_provider.platform.allow_admin_role_mapping == true
     error_message = "the broker must be allowed to fill project-admins, which carries the realm admin roles"
   }
 
