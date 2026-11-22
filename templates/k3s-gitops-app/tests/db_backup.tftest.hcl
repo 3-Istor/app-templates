@@ -32,12 +32,12 @@ run "onprem_database_is_backed_up" {
   assert {
     condition = (
       yamldecode(github_repository_file.values_backend[0].content).db.backup.enabled == true
-      && yamldecode(github_repository_file.values_backend[0].content).db.backup.bucket == "rook"
-      && yamldecode(github_repository_file.values_backend[0].content).db.backup.endpointURL == "http://192.168.1.110:7480"
-      && yamldecode(github_repository_file.values_backend[0].content).migrations.backupBefore == true
+      && yamldecode(github_repository_file.values_backend[0].content).db.backup.bucket == "vault"
+      && !contains(keys(yamldecode(github_repository_file.values_backend[0].content).db.backup), "endpointURL")
+      && yamldecode(github_repository_file.values_backend[0].content).migrations.backupBefore == false
       && yamldecode(github_repository_file.values_backend[0].content).db.metrics == true
     )
-    error_message = "on-prem: rook bucket, in-cluster RGW, backup before migration"
+    error_message = "on-prem: key from Vault like the clouds, endpoint injected by the ApplicationSet, no pre-migration backup on first deploy"
   }
 }
 
@@ -49,10 +49,9 @@ run "aws_database_is_backed_up" {
     condition = (
       yamldecode(github_repository_file.values_backend[0].content).db.backup.enabled == true
       && yamldecode(github_repository_file.values_backend[0].content).db.backup.bucket == "vault"
-      && yamldecode(github_repository_file.values_backend[0].content).db.backup.endpointURL == "http://onprem-apps.cnp-vpn.svc.cluster.local:18084"
       && yamldecode(github_repository_file.values_backend[0].content).migrations.backupBefore == false
     )
-    error_message = "cloud: vault bucket via WireGuard, no pre-migration backup on first deploy"
+    error_message = "cloud: vault bucket, no pre-migration backup on first deploy"
   }
 }
 
@@ -64,9 +63,8 @@ run "gcp_database_is_backed_up" {
     condition = (
       yamldecode(github_repository_file.values_backend[0].content).db.backup.enabled == true
       && yamldecode(github_repository_file.values_backend[0].content).db.backup.bucket == "vault"
-      && yamldecode(github_repository_file.values_backend[0].content).db.backup.endpointURL == "http://onprem-apps.cnp-vpn.svc.cluster.local:18084"
       && yamldecode(github_repository_file.values_backend[0].content).migrations.backupBefore == false
     )
-    error_message = "cloud: vault bucket via WireGuard, no pre-migration backup on first deploy"
+    error_message = "cloud: vault bucket, no pre-migration backup on first deploy"
   }
 }

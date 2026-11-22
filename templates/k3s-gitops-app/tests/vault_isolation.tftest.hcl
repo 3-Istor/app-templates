@@ -48,3 +48,23 @@ run "the_app_policy_reads_the_app_subtree_only" {
     error_message = "The app policy must read its own subtree and nothing else."
   }
 }
+
+run "onprem_app_has_roles_on_both_cloud_mounts" {
+  variables {
+    target_cloud = "onprem"
+  }
+  assert {
+    condition     = keys(vault_kubernetes_auth_backend_role.app_role_away) == ["kubernetes-aws", "kubernetes-gcp"]
+    error_message = "an on-prem app needs its role on the aws and gcp mounts for a move"
+  }
+}
+
+run "aws_app_has_a_role_on_the_onprem_mount" {
+  variables {
+    target_cloud = "aws"
+  }
+  assert {
+    condition     = keys(vault_kubernetes_auth_backend_role.app_role_away) == ["kubernetes"] && vault_kubernetes_auth_backend_role.app_role_peer[0].backend == "kubernetes-gcp"
+    error_message = "a cloud app needs its role on kubernetes, and keeps its peer role"
+  }
+}
