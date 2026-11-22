@@ -19,9 +19,11 @@ secrets:
   vaultPath: "project-${project_name}/${app_name}"
   vaultRole: "${project_name}-${app_name}-role"
 
-# The backend release creates app-registry; the frontend only references it below.
+# Its own pull secret: the backend's app-registry lives in another Argo CD
+# Application, which a fresh cluster may sync later (a move, a new cloud).
 registrySecret:
-  create: false
+  create: true
+  name: app-registry-frontend
 
 env:
   # nginx's resolver ignores DNS search domains, so the backend name must be fully
@@ -34,7 +36,7 @@ env:
     value: "http://${project_name}-${app_name}-backend-cnp-generic-app.$(POD_NAMESPACE).svc.cluster.local:8000"
 
 imagePullSecrets:
-  - name: app-registry
+  - name: app-registry-frontend
 
 project_name: "${project_name}"
 app_name: "${app_name}"
