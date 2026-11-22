@@ -42,7 +42,7 @@ run "binds_the_project_flow_to_the_broker" {
 }
 
 run "public_project_has_a_role_on_the_other_public_mount" {
-  command   = plan
+  command = plan
   variables { target_cloud = "aws" }
 
   assert {
@@ -52,12 +52,32 @@ run "public_project_has_a_role_on_the_other_public_mount" {
 }
 
 run "onprem_project_has_no_peer_role" {
-  command   = plan
+  command = plan
   variables { target_cloud = "onprem" }
 
   assert {
     condition     = length(vault_kubernetes_auth_backend_role.project_system_role_peer) == 0
     error_message = "on-prem has a single mount"
+  }
+}
+
+run "onprem_project_has_roles_on_both_cloud_mounts" {
+  command = plan
+  variables { target_cloud = "onprem" }
+
+  assert {
+    condition     = keys(vault_kubernetes_auth_backend_role.project_system_role_away) == ["kubernetes-aws", "kubernetes-gcp"]
+    error_message = "an on-prem project needs its system role on the aws and gcp mounts for a move"
+  }
+}
+
+run "aws_project_has_a_role_on_the_onprem_mount" {
+  command = plan
+  variables { target_cloud = "aws" }
+
+  assert {
+    condition     = keys(vault_kubernetes_auth_backend_role.project_system_role_away) == ["kubernetes"]
+    error_message = "a cloud project needs its system role on kubernetes"
   }
 }
 

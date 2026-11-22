@@ -8,12 +8,13 @@ locals {
   # list because the module no longer creates cloud resources — the per-capability
   # split (network, compute, database, storage, exposure) lives in
   # project-bootstrap, which is where cloud resources are actually created.
-  # Cloud backup keys come from Vault through WireGuard; backup_before is false
-  # on the first deploy (new database), the CMP flips it once the bucket key exists.
+  # Backup keys come from Vault on every cloud; the endpoint is injected by the
+  # ApplicationSet. backup_before is false on the first deploy (new database),
+  # the CMP flips it once the bucket key exists.
   cloud_profile = {
-    onprem = { storage_class = "local-path", db_backup = true, backup_bucket = "rook", backup_endpoint = "http://192.168.1.110:7480", backup_before = true }
-    aws    = { storage_class = "local-path", db_backup = true, backup_bucket = "vault", backup_endpoint = "http://onprem-apps.cnp-vpn.svc.cluster.local:18084", backup_before = false }
-    gcp    = { storage_class = "local-path", db_backup = true, backup_bucket = "vault", backup_endpoint = "http://onprem-apps.cnp-vpn.svc.cluster.local:18084", backup_before = false }
+    onprem = { storage_class = "local-path", db_backup = true, backup_bucket = "vault", backup_before = false }
+    aws    = { storage_class = "local-path", db_backup = true, backup_bucket = "vault", backup_before = false }
+    gcp    = { storage_class = "local-path", db_backup = true, backup_bucket = "vault", backup_before = false }
   }
   storage_class = local.cloud_profile[var.target_cloud].storage_class
 
@@ -68,15 +69,14 @@ resource "github_repository_file" "values_backend" {
   branch     = "main"
   file       = "deploy/values-backend.yaml"
   content = templatefile("${path.module}/templates/values-backend.yaml.tpl", {
-    github_owner    = lower(var.github_owner)
-    app_name        = lower(var.app_name)
-    project_name    = var.project_name
-    storage_class   = local.storage_class
-    image_tag       = local.image_tag
-    db_backup       = local.cloud_profile[var.target_cloud].db_backup
-    backup_bucket   = local.cloud_profile[var.target_cloud].backup_bucket
-    backup_endpoint = local.cloud_profile[var.target_cloud].backup_endpoint
-    backup_before   = local.cloud_profile[var.target_cloud].backup_before
+    github_owner  = lower(var.github_owner)
+    app_name      = lower(var.app_name)
+    project_name  = var.project_name
+    storage_class = local.storage_class
+    image_tag     = local.image_tag
+    db_backup     = local.cloud_profile[var.target_cloud].db_backup
+    backup_bucket = local.cloud_profile[var.target_cloud].backup_bucket
+    backup_before = local.cloud_profile[var.target_cloud].backup_before
   })
   commit_message      = "chore: bootstrap cnp backend variables [skip ci]"
   overwrite_on_create = true
@@ -266,6 +266,17 @@ resource "vault_kubernetes_auth_backend_role" "app_role_peer" {
   # The aws and gcp mounts are permanent, so a cross-cloud move finds its roles waiting.
   count                            = var.target_cloud == "onprem" ? 0 : 1
   backend                          = "kubernetes-${var.target_cloud == "aws" ? "gcp" : "aws"}"
+  role_name                        = "${var.project_name}-${var.app_name}-role"
+  bound_service_account_names      = ["vault-secrets-operator"]
+  bound_service_account_namespaces = ["vault-secrets-operator"]
+  token_ttl                        = 86400
+  token_policies                   = [vault_policy.app.name]
+}
+
+resource "vault_kubernetes_auth_backend_role" "app_role_away" {
+  # Every mount the app can move to, so a move finds its role waiting.
+  for_each                         = var.target_cloud == "onprem" ? toset(["kubernetes-aws", "kubernetes-gcp"]) : toset(["kubernetes"])
+  backend                          = each.key
   role_name                        = "${var.project_name}-${var.app_name}-role"
   bound_service_account_names      = ["vault-secrets-operator"]
   bound_service_account_namespaces = ["vault-secrets-operator"]

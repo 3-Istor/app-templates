@@ -621,6 +621,17 @@ resource "vault_kubernetes_auth_backend_role" "project_system_role_peer" {
   token_policies                   = [vault_policy.project_system_policy.name]
 }
 
+resource "vault_kubernetes_auth_backend_role" "project_system_role_away" {
+  # Every mount the app can move to, so a move finds its role waiting.
+  for_each                         = var.target_cloud == "onprem" ? toset(["kubernetes-aws", "kubernetes-gcp"]) : toset(["kubernetes"])
+  backend                          = each.key
+  role_name                        = "project-${var.project_name}-system-role"
+  bound_service_account_names      = ["vault-secrets-operator"]
+  bound_service_account_namespaces = ["vault-secrets-operator"]
+  token_ttl                        = 86400
+  token_policies                   = [vault_policy.project_system_policy.name]
+}
+
 # ==============================================================================
 # PROJECT INGRESS — one tunnel per project (D-06)
 # ==============================================================================

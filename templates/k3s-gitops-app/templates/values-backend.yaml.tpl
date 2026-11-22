@@ -50,7 +50,6 @@ db:
   backup:
     enabled: ${db_backup}
     bucket: ${backup_bucket}
-    endpointURL: "${backup_endpoint}"
 
 # The image creates no tables itself (CNP migration standard v1): the platform
 # runs its migration entrypoint as a Job once the database is Ready and before

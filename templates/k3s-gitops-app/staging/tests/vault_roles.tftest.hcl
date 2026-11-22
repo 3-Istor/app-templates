@@ -31,3 +31,21 @@ run "onprem_staging_has_no_peer_role" {
     error_message = "on-prem has a single mount"
   }
 }
+
+run "onprem_staging_has_roles_on_both_cloud_mounts" {
+  variables { target_cloud = "onprem" }
+
+  assert {
+    condition     = keys(vault_kubernetes_auth_backend_role.staging_role_away) == ["kubernetes-aws", "kubernetes-gcp"]
+    error_message = "an on-prem staging environment needs its role on the aws and gcp mounts for a move"
+  }
+}
+
+run "gcp_staging_has_a_role_on_the_onprem_mount" {
+  variables { target_cloud = "gcp" }
+
+  assert {
+    condition     = keys(vault_kubernetes_auth_backend_role.staging_role_away) == ["kubernetes"]
+    error_message = "a cloud staging environment needs its role on kubernetes"
+  }
+}
