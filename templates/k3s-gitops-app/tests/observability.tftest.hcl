@@ -51,6 +51,10 @@ run "public_app_has_a_role_on_the_other_public_mount" {
     condition     = vault_kubernetes_auth_backend_role.app_role_peer[0].backend == "kubernetes-gcp" && vault_kubernetes_auth_backend_role.app_role.backend == "kubernetes-aws"
     error_message = "an aws app needs its role on kubernetes-gcp too"
   }
+  assert {
+    condition     = vault_kubernetes_auth_backend_role.app_role_peer[0].token_policies == vault_kubernetes_auth_backend_role.app_role.token_policies
+    error_message = "the peer role must grant the app's own policy, not the project's"
+  }
 }
 
 run "onprem_app_has_no_peer_role" {
