@@ -6,7 +6,7 @@ icon: book-open-text
 recommended:
   models: [claude-haiku-5-5]
   isolation: gvisor
-  dailyTokenBudget: 300000
+  dailyTokenBudget: 500000
 defaults:
   template: docs-qa
   description: "Répond aux questions sur la documentation du projet, sources à l'appui"

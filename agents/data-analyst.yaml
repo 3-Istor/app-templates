@@ -6,7 +6,7 @@ icon: chart-column
 recommended:
   models: [claude-haiku-5-5, claude-sonnet-5-5]
   isolation: gvisor
-  dailyTokenBudget: 400000
+  dailyTokenBudget: 500000
 defaults:
   template: data-analyst
   description: "Répond aux questions chiffrées sur les données du projet, graphiques à l'appui"
