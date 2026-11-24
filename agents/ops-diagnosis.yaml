@@ -6,7 +6,7 @@ icon: stethoscope
 recommended:
   models: [claude-haiku-5-5, claude-sonnet-5-5]
   isolation: gvisor
-  dailyTokenBudget: 400000
+  dailyTokenBudget: 500000
 defaults:
   template: ops-diagnosis
   description: "Diagnostique les incidents des apps du projet et propose des actions"

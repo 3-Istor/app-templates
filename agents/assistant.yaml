@@ -6,7 +6,7 @@ icon: sparkles
 recommended:
   models: [claude-haiku-5-5]
   isolation: gvisor
-  dailyTokenBudget: 200000
+  dailyTokenBudget: 500000
 defaults:
   template: assistant
   description: "Assistant du projet"

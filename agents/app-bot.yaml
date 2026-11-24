@@ -9,7 +9,7 @@ icon: bot
 recommended:
   models: [claude-haiku-5-5]
   isolation: gvisor
-  dailyTokenBudget: 300000
+  dailyTokenBudget: 500000
 pair:
   reader:
     suffix: reader
@@ -18,7 +18,7 @@ pair:
     recommended:
       models: [claude-haiku-5-5]
       isolation: gvisor
-      dailyTokenBudget: 50000
+      dailyTokenBudget: 500000
     defaults:
       template: app-bot
       description: "Publie la réponse préparée par le lecteur, et rien d'autre"
