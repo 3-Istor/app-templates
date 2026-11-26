@@ -5,7 +5,7 @@ output "hostname" {
 
 output "vault_path" {
   description = "secrets.vaultPath of the staging values files"
-  value       = "${local.mount}/${local.path}"
+  value       = "${local.mount}/${local.path}/secrets"
 }
 
 output "vault_role" {

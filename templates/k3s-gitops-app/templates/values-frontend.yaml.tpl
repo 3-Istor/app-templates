@@ -16,7 +16,6 @@ service:
 
 secrets:
   enabled: true
-  vaultPath: "project-${project_name}/${app_name}"
   vaultRole: "${project_name}-${app_name}-role"
 
 # Its own pull secret: the backend's app-registry lives in another Argo CD

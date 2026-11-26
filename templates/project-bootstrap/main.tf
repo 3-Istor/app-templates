@@ -89,16 +89,10 @@ path "project-${var.project_name}/data/keycloak-tenant-admin-staging" {
 path "project-${var.project_name}/metadata/keycloak-tenant-admin-staging" {
   capabilities = ["deny"]
 }
-path "project-${var.project_name}/data/+/registry" {
+path "project-${var.project_name}/data/+/+/registry" {
   capabilities = ["deny"]
 }
-path "project-${var.project_name}/metadata/+/registry" {
-  capabilities = ["deny"]
-}
-path "project-${var.project_name}/data/+/staging/registry" {
-  capabilities = ["deny"]
-}
-path "project-${var.project_name}/metadata/+/staging/registry" {
+path "project-${var.project_name}/metadata/+/+/registry" {
   capabilities = ["deny"]
 }
 EOT

@@ -58,8 +58,13 @@ resource "random_password" "db_password" {
 
 resource "vault_kv_secret_v2" "staging_secrets" {
   mount               = local.mount
-  name                = local.path
+  name                = "${local.path}/secrets"
   delete_all_versions = true
+
+  # Keys the team adds by hand (API keys) live here too: written once, never reset.
+  lifecycle {
+    ignore_changes = [data_json]
+  }
 
   custom_metadata {
     data = {
@@ -100,14 +105,8 @@ resource "vault_kv_secret_v2" "staging_registry" {
 resource "vault_policy" "staging" {
   name   = "project-${var.project_name}-${var.app_name}-staging-policy"
   policy = <<EOT
-path "${local.mount}/data/${local.path}" {
-  capabilities = ["read"]
-}
 path "${local.mount}/data/${local.path}/*" {
   capabilities = ["read"]
-}
-path "${local.mount}/metadata/${local.path}" {
-  capabilities = ["read", "list"]
 }
 path "${local.mount}/metadata/${local.path}/*" {
   capabilities = ["read", "list"]
