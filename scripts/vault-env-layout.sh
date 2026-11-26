@@ -3,10 +3,12 @@
 #   plan     print what copy and cleanup would do (default)
 #   copy     write the new paths, never overwrite one that exists
 #   cleanup  delete the old paths once copy was checked
+# Optional mounts after the mode limit the run (default: every project-*).
 # Needs the vault-data elevation (CNP-124) to reach every project. Values only
 # travel through pipes, never to disk or stdout.
 set -euo pipefail
 mode="${1:-plan}"
+shift || true
 : "${VAULT_ADDR:?set VAULT_ADDR}"
 
 # Fixed moves outside the generic rule: "mount src dst".
@@ -50,7 +52,7 @@ copy_one() {
   echo "  copy $m/$src -> $dst"
 }
 
-for m in $(vault secrets list -format=json | jq -r 'keys[] | select(startswith("project-")) | rtrimstr("/")'); do
+for m in ${*:-$(vault secrets list -format=json | jq -r 'keys[] | select(startswith("project-")) | rtrimstr("/")')}; do
   moves=$(plan_mount "$m")
   dsts=$(awk '{print $2}' <<<"$moves" | sort)
   if [ -n "$dsts" ] && [ "$(uniq -d <<<"$dsts")" ]; then
