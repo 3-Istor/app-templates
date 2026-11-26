@@ -190,8 +190,13 @@ resource "random_password" "db_password" {
 # Kubernetes Secret.
 resource "vault_kv_secret_v2" "app_secrets" {
   mount               = "project-${var.project_name}"
-  name                = var.app_name
+  name                = "${var.app_name}/prod/secrets"
   delete_all_versions = true
+
+  # Keys the team adds by hand (API keys) live here too: written once, never reset.
+  lifecycle {
+    ignore_changes = [data_json]
+  }
 
   custom_metadata {
     data = {
@@ -213,7 +218,7 @@ resource "vault_kv_secret_v2" "app_secrets" {
 # operator materialises it on whichever cluster the app lands on.
 resource "vault_kv_secret_v2" "app_registry" {
   mount               = "project-${var.project_name}"
-  name                = "${var.app_name}/registry"
+  name                = "${var.app_name}/prod/registry"
   delete_all_versions = true
 
   data_json = jsonencode({
@@ -236,16 +241,10 @@ resource "vault_kv_secret_v2" "app_registry" {
 resource "vault_policy" "app" {
   name   = "project-${var.project_name}-app-${var.app_name}-policy"
   policy = <<EOT
-path "project-${var.project_name}/data/${var.app_name}" {
+path "project-${var.project_name}/data/${var.app_name}/prod/*" {
   capabilities = ["read"]
 }
-path "project-${var.project_name}/data/${var.app_name}/*" {
-  capabilities = ["read"]
-}
-path "project-${var.project_name}/metadata/${var.app_name}" {
-  capabilities = ["read", "list"]
-}
-path "project-${var.project_name}/metadata/${var.app_name}/*" {
+path "project-${var.project_name}/metadata/${var.app_name}/prod/*" {
   capabilities = ["read", "list"]
 }
 EOT
